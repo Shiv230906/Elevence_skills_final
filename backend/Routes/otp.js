@@ -3,6 +3,8 @@ const router = express.Router();
 const nodemailer = require("nodemailer");
 const otpGenerator = require("otp-generator");
 
+const { sendFastEmail } = require("../utils/mailer");
+
 let otpStore = {};
 
 router.post("/send", async (req, res) => {
@@ -26,26 +28,18 @@ router.post("/send", async (req, res) => {
       expiresAt: Date.now() + 5 * 60 * 1000,
     };
 
-   const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Language Change Verification OTP",
-      text: `Your OTP for changing the website language is ${otp}. This OTP is valid for 5 minutes.`,
-    });
+    const subject = req.body.subject || "Resume Generation Verification OTP";
+    const text = req.body.text || `Your OTP for Premium Resume Generation is ${otp}. This OTP is valid for 5 minutes.`;
+
+    console.log(`\n========================================\n[OTP SERVICE] Generated OTP for ${email}: ${otp}\n========================================\n`);
+
+    sendFastEmail({ to: email, subject, text });
 
     res.json({
       success: true,
       message: "OTP sent successfully",
+      // Include otp in response if dev mode to make testing super easy
+      ...(process.env.NODE_ENV !== "production" ? { devOtp: otp } : {}),
     });
   } catch (error) {
     console.error("OTP error:", error);

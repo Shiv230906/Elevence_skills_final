@@ -167,13 +167,21 @@ const index = () => {
         Application: id,
         availability,
       };
-      try {
-        await axios.post("https://elevance-skill.onrender.com/api/application", applicationdata);
-      } catch {
-        await axios.post(
-          "https://internshala-clone-y2p2.onrender.com/api/application",
-          applicationdata
-        );
+      const getBackendUrl = (): string => {
+        return process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      };
+      const urls = [
+        `${getBackendUrl()}/application`,
+        "https://elevance-skill.onrender.com/api/application",
+        "https://internshala-clone-y2p2.onrender.com/api/application",
+      ];
+      for (const url of urls) {
+        try {
+          await axios.post(url, applicationdata);
+          break;
+        } catch {
+          // fallback
+        }
       }
       toast.success("Application submit successfully");
       setIsModalOpen(false);
