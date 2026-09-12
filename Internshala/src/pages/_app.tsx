@@ -36,109 +36,85 @@ const AuthListener = () => {
       }
 
       if (authuser) {
-        // Detect if the signed-in Firebase user authenticated via Google
-        const isGoogleUser = authuser.providerData?.some(
-          (p) => p.providerId === "google.com"
-        );
+        const uid = authuser.uid;
+        const isOtpVerified =
+          typeof window !== "undefined" &&
+          sessionStorage.getItem(`otp_verified_${uid}`) === "true";
 
-        if (isGoogleUser) {
-          const uid = authuser.uid;
-
-          // Check if OTP was already verified for this session
-          const isOtpVerified =
-            typeof window !== "undefined" &&
-            sessionStorage.getItem(`otp_verified_${uid}`) === "true";
-
-          if (isOtpVerified) {
-            // OTP done → allow Redux login and stay on page
-            dispatch(
-              login({
-                uid: authuser.uid || "",
-                photo: authuser.photoURL || "",
-                name: authuser.displayName || "",
-                email: authuser.email || "",
-              })
-            );
-            // If somehow still on verify-otp page, send back home
-            if (router.pathname === "/verify-otp") {
-              router.replace("/");
-            }
-            return;
+        if (isOtpVerified) {
+          // OTP verified → allow Redux login
+          dispatch(
+            login({
+              uid: authuser.uid || "",
+              photo: authuser.photoURL || "",
+              name: authuser.displayName || "",
+              email: authuser.email || "",
+            })
+          );
+          if (router.pathname === "/verify-otp") {
+            router.replace("/");
           }
-
-          // OTP not verified yet.
-          // ──────────────────────────────────────────────────────────────────
-          // CRITICAL: Only redirect to OTP page if there is an *active login
-          // attempt* in progress (i.e., `pending_otp_login` was set by the
-          // handlelogin function in Sidebar.tsx right after the Google popup
-          // succeeded). Do NOT redirect just because a Firebase session exists
-          // (which happens on every page refresh for a previously-signed-in user).
-          // ──────────────────────────────────────────────────────────────────
-          const hasPendingOtp =
-            typeof window !== "undefined" &&
-            Boolean(sessionStorage.getItem("pending_otp_login"));
-
-          if (hasPendingOtp) {
-            // Active login attempt exists → ensure user is NOT in Redux yet
-            dispatch(logout());
-
-            // Guard: if they navigated away from /verify-otp, redirect back
-            const publicRoutes = ["/verify-otp", "/adminlogin", "/forgot-password"];
-            if (!publicRoutes.includes(router.pathname)) {
-              router.replace("/verify-otp");
-            }
-            return;
-          }
-
-          // No pending login attempt AND no OTP verified:
-          // This is a stale Firebase session (app startup or page refresh).
-          // In this case we silently sign the user out so they are treated
-          // as a guest. They must log in again and complete OTP verification.
-          dispatch(logout());
           return;
         }
 
-        // NON-GOOGLE LOGIN (e.g. email/password login):
-        // No OTP required — dispatch login directly.
-        dispatch(
-          login({
-            uid: authuser.uid || "",
-            photo: authuser.photoURL || "",
-            name: authuser.displayName || "",
-            email: authuser.email || "",
-          })
-        );
+        // OTP not verified yet
+        const hasPendingOtp =
+          typeof window !== "undefined" &&
+          Boolean(sessionStorage.getItem("pending_otp_login"));
+
+        if (hasPendingOtp) {
+          // Active login attempt in progress → keep logged out in Redux
+          dispatch(logout());
+
+          const publicRoutes = ["/login", "/register", "/verify-otp", "/adminlogin", "/forgot-password"];
+          if (!publicRoutes.includes(router.pathname)) {
+            router.replace("/verify-otp");
+          }
+          return;
+        }
+
+        // Stale session without active login attempt and without OTP verification
+        // Treat as guest — do not show OTP on startup or refresh
+        dispatch(logout());
+        return;
       } else {
+        // No Firebase user. Check if credentials user is already OTP-verified in sessionStorage
+        if (typeof window !== "undefined") {
+          const pending = sessionStorage.getItem("pending_otp_login");
+          if (pending) {
+            try {
+              const parsed = JSON.parse(pending);
+              const isOtpVerified = sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true";
+              if (isOtpVerified) {
+                dispatch(
+                  login({
+                    uid: parsed.uid || "",
+                    photo: parsed.photo || "",
+                    name: parsed.name || "",
+                    email: parsed.email || "",
+                  })
+                );
+                return;
+              }
+            } catch (_) {}
+          }
+        }
         dispatch(logout());
       }
     });
 
     return () => unsubscribe();
-  }, [dispatch]); // Only runs once on mount — no router dependency to avoid
-                  // re-running on every navigation change.
+  }, [dispatch]);
 
-  // Route guard: only enforce the /verify-otp redirect when a login attempt
-  // is actively in progress (pending_otp_login is set in sessionStorage).
+  // Route guard: enforce /verify-otp ONLY when an active login attempt is pending
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Only guard if there is an active pending login attempt
     const hasPendingOtp = Boolean(sessionStorage.getItem("pending_otp_login"));
-    if (!hasPendingOtp) return; // No active login attempt → no redirect needed
+    if (!hasPendingOtp) return;
 
-    const currentFbUser = auth.currentUser;
-    if (!currentFbUser) return;
-
-    const isGoogle = currentFbUser.providerData?.some(
-      (p) => p.providerId === "google.com"
-    );
-    if (!isGoogle) return;
-
-    const uid = currentFbUser.uid;
-    const isVerified = sessionStorage.getItem(`otp_verified_${uid}`) === "true";
-    const publicRoutes = ["/verify-otp", "/adminlogin", "/forgot-password"];
-
-    if (!isVerified && !publicRoutes.includes(router.pathname)) {
+    const publicRoutes = ["/login", "/register", "/verify-otp", "/adminlogin", "/forgot-password"];
+    if (!publicRoutes.includes(router.pathname)) {
       router.replace("/verify-otp");
     }
   }, [router.pathname]);

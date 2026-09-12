@@ -1,7 +1,9 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Post = require("../Model/Post");
 const Friend = require("../Model/Friend");
+const User = require("../Model/User");
 
 /**
  * GET /api/users/search?q=searchTerm&userId=currentUserId
@@ -51,7 +53,7 @@ router.get("/search", async (req, res) => {
 
 /**
  * GET /api/users/profile/:userId
- * Get basic profile info of a user (from their most recent post)
+ * Get profile info of a user (checks User model first, then latest post)
  */
 router.get("/profile/:userId", async (req, res) => {
   try {
@@ -61,19 +63,44 @@ router.get("/profile/:userId", async (req, res) => {
       return res.status(400).json({ error: "userId is required" });
     }
 
-    // Get profile from latest post
+    // 1. Check User model first by firebaseUid or _id
+    let userDoc = await User.findOne({
+      $or: [
+        { firebaseUid: userId },
+        ...(mongoose.isValidObjectId(userId) ? [{ _id: userId }] : []),
+      ],
+    });
+
+    // Count friends
+    const friendCount = await Friend.countDocuments({
+      $or: [{ requester: userId }, { receiver: userId }],
+      status: "accepted",
+    });
+
+    if (userDoc) {
+      return res.json({
+        success: true,
+        profile: {
+          userId: userDoc.firebaseUid || userDoc._id,
+          name: userDoc.name,
+          photo: userDoc.profilePhoto || "",
+          email: userDoc.email,
+          phone: userDoc.phone || "",
+          username: userDoc.username || "",
+          role: userDoc.role || "user",
+          lastLoginAt: userDoc.lastLoginAt,
+          friendCount,
+        },
+      });
+    }
+
+    // 2. Fallback to latest post if not found in User model
     const latestPost = await Post.findOne({ userId }, { userId: 1, userName: 1, userPhoto: 1, userEmail: 1 })
       .sort({ createdAt: -1 });
 
     if (!latestPost) {
       return res.status(404).json({ error: "User not found" });
     }
-
-    // Get accepted friend count
-    const friendCount = await Friend.countDocuments({
-      $or: [{ requester: userId }, { receiver: userId }],
-      status: "accepted",
-    });
 
     return res.json({
       success: true,

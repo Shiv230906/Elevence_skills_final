@@ -135,14 +135,26 @@ export default function VerifyOtpPage() {
         sessionStorage.setItem(`otp_verified_${uid}`, "true");
         sessionStorage.removeItem("pending_otp_login");
 
+        let userName = pendingUser?.name || auth.currentUser?.displayName || "User";
+        let userPhoto = pendingUser?.photo || auth.currentUser?.photoURL || "";
+
+        // Attempt fetching enriched profile from backend database
+        try {
+          const profileRes = await fetch(`${BACKEND_URL}/api/auth/profile/${uid}`);
+          const profileData = await profileRes.json();
+          if (profileData.success && profileData.user) {
+            userName = profileData.user.name || userName;
+            userPhoto = profileData.user.profilePhoto || userPhoto;
+          }
+        } catch (_) {}
+
         // Dispatch login to Redux
-        const fbUser = auth.currentUser;
         dispatch(
           login({
             uid: uid,
-            name: pendingUser?.name || fbUser?.displayName || "User",
+            name: userName,
             email: email,
-            photo: pendingUser?.photo || fbUser?.photoURL || "",
+            photo: userPhoto,
           })
         );
 
@@ -171,7 +183,7 @@ export default function VerifyOtpPage() {
     const email = pendingUser?.email || auth.currentUser?.email;
     const uid = pendingUser?.uid || auth.currentUser?.uid;
 
-    if (!email || !uid) {
+    if (!email) {
       toast.error("User session not found. Please log in again.");
       return;
     }
@@ -186,10 +198,10 @@ export default function VerifyOtpPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          firebaseUid: uid,
+          firebaseUid: uid || "pending",
           userEmail: email,
-          loginType: "google",
-          isGoogleLogin: true,
+          loginType: pendingUser?.loginType || "credentials",
+          isGoogleLogin: pendingUser?.loginType === "google",
         }),
       });
 
@@ -224,7 +236,7 @@ export default function VerifyOtpPage() {
         sessionStorage.removeItem(`otp_verified_${uid}`);
       }
     }
-    router.replace("/");
+    router.replace("/login");
   };
 
   return (

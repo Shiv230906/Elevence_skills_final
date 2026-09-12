@@ -145,7 +145,7 @@ const Sidebar = () => {
         error?.code === "auth/cancelled-popup-request" ||
         error?.code === "auth/popup-closed-by-user"
       ) {
-        toast.info("Google login was cancelled. You can try again anytime.");
+        toast.info("Google sign-in was cancelled. Please try again.");
         isLoggingInRef.current = false;
         setIsLoggingIn(false);
         return;
@@ -589,6 +589,15 @@ const Sidebar = () => {
         {/* 1. GUEST */}
         {isGuest && (
           <div className="space-y-2">
+            <Link
+              href="/login"
+              onClick={() => setIsMobileOpen(false)}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-3 py-2.5 flex items-center justify-center space-x-2 text-xs font-semibold shadow-sm transition-all hover:shadow active:scale-98"
+            >
+              <UserIcon className="w-4 h-4 flex-shrink-0" />
+              <span>Sign In / Register</span>
+            </Link>
+
             <button
               type="button"
               onClick={handlelogin}

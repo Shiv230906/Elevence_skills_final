@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import {
   KeyRound,
   Mail,
@@ -16,17 +16,19 @@ import {
   Clock,
   RotateCw,
   Lock,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
-type ResetStep = "IDENTIFIER_INPUT" | "OTP_VERIFICATION" | "SUCCESS_DISPLAY";
+type ResetStep = "IDENTIFIER_INPUT" | "OTP_VERIFICATION" | "PASSWORD_GENERATOR" | "SUCCESS_DISPLAY";
 
 export default function ForgotPassword() {
   const router = useRouter();
 
-  // Current Step: 1 = Identifier, 2 = OTP, 3 = Password Display
+  // Current Step
   const [step, setStep] = useState<ResetStep>("IDENTIFIER_INPUT");
 
   // Step 1: Identifier state
@@ -45,10 +47,12 @@ export default function ForgotPassword() {
   const [isResending, setIsResending] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Step 3: Password display state
+  // Step 3: Password Generator state
   const [generatedPassword, setGeneratedPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(true);
   const [hasCopied, setHasCopied] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isApplyingPassword, setIsApplyingPassword] = useState(false);
 
   // Countdown timer for OTP
   useEffect(() => {
@@ -72,6 +76,23 @@ export default function ForgotPassword() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+  };
+
+  // Client-side fallback generator: ONLY [A-Za-z], NO numbers, NO symbols
+  const generateClientAlphaPassword = (length = 12): string => {
+    const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const lower = "abcdefghijklmnopqrstuvwxyz";
+    const all = upper + lower;
+    let pwd = "";
+    pwd += upper[Math.floor(Math.random() * upper.length)];
+    pwd += lower[Math.floor(Math.random() * lower.length)];
+    for (let i = 2; i < length; i++) {
+      pwd += all[Math.floor(Math.random() * all.length)];
+    }
+    return pwd
+      .split("")
+      .sort(() => 0.5 - Math.random())
+      .join("");
   };
 
   // ── STEP 1: Submit email or phone to request reset OTP ────────────────────
@@ -119,14 +140,14 @@ export default function ForgotPassword() {
         setTimerSeconds(600); // 10 mins
         toast.success(data.message || "OTP sent successfully to your contact.");
       } else {
-        // Clear error message display
         const errMsg = data.message || "Unable to process request. Please try again.";
         setIdentifierError(errMsg);
         toast.error(errMsg);
       }
     } catch (err) {
       console.error("Forgot password request error:", err);
-      const networkErrMsg = "Unable to connect to the authentication server. Please check your connection.";
+      const networkErrMsg =
+        "Unable to connect to the authentication server. Please check your connection.";
       setIdentifierError(networkErrMsg);
       toast.error(networkErrMsg);
     } finally {
@@ -134,7 +155,7 @@ export default function ForgotPassword() {
     }
   };
 
-  // ── STEP 2: Verify OTP and generate password ──────────────────────────────
+  // ── STEP 2: Verify OTP ───────────────────────────────────────────────────
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setOtpError("");
@@ -153,7 +174,7 @@ export default function ForgotPassword() {
     try {
       setIsVerifyingOtp(true);
 
-      const response = await fetch(`${BACKEND_URL}/api/auth/forgot-password/verify`, {
+      const response = await fetch(`${BACKEND_URL}/api/auth/forgot-password/verify-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -167,9 +188,10 @@ export default function ForgotPassword() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setGeneratedPassword(data.generatedPassword);
-        setStep("SUCCESS_DISPLAY");
-        toast.success("OTP verified! Password reset successfully.");
+        // Initial password generation for step 3
+        generateNewPassword();
+        setStep("PASSWORD_GENERATOR");
+        toast.success("OTP verified! Please generate or choose your new password.");
       } else {
         const errMsg = data.message || "Invalid or expired OTP. Please try again.";
         setOtpError(errMsg);
@@ -182,6 +204,62 @@ export default function ForgotPassword() {
       toast.error(networkErrMsg);
     } finally {
       setIsVerifyingOtp(false);
+    }
+  };
+
+  // ── STEP 3: Password Generator ───────────────────────────────────────────
+  const generateNewPassword = async () => {
+    setIsGenerating(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/forgot-password/generate-password`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.success && data.generatedPassword) {
+        setGeneratedPassword(data.generatedPassword);
+      } else {
+        setGeneratedPassword(generateClientAlphaPassword(12));
+      }
+    } catch {
+      setGeneratedPassword(generateClientAlphaPassword(12));
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleApplyPassword = async () => {
+    if (!generatedPassword) {
+      toast.error("Please generate a password first.");
+      return;
+    }
+
+    try {
+      setIsApplyingPassword(true);
+
+      const response = await fetch(`${BACKEND_URL}/api/auth/forgot-password/complete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          resetToken,
+          newPassword: generatedPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setStep("SUCCESS_DISPLAY");
+        toast.success(data.message || "Password reset successfully.");
+      } else {
+        toast.error(data.message || "Failed to update password. Please try again.");
+      }
+    } catch (err) {
+      console.error("Complete reset error:", err);
+      toast.error("Unable to update password. Please check your connection.");
+    } finally {
+      setIsApplyingPassword(false);
     }
   };
 
@@ -243,15 +321,18 @@ export default function ForgotPassword() {
         <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
           {step === "IDENTIFIER_INPUT" && "Reset Your Password"}
           {step === "OTP_VERIFICATION" && "Verify Security OTP"}
-          {step === "SUCCESS_DISPLAY" && "New Password Ready"}
+          {step === "PASSWORD_GENERATOR" && "Password Generator"}
+          {step === "SUCCESS_DISPLAY" && "Password Reset Successful"}
         </h1>
         <p className="mt-2 text-sm text-gray-600">
           {step === "IDENTIFIER_INPUT" &&
             "Enter your registered email address or phone number to receive a verification code."}
           {step === "OTP_VERIFICATION" &&
             "Enter the 6-digit verification code sent to your registered contact."}
+          {step === "PASSWORD_GENERATOR" &&
+            "Generate a random secure letter-only password and apply it to your account."}
           {step === "SUCCESS_DISPLAY" &&
-            "Your password has been updated securely. Copy and save your new password below."}
+            "Your password has been securely updated. You can now login with your new credentials."}
         </p>
       </div>
 
@@ -326,7 +407,7 @@ export default function ForgotPassword() {
                     placeholder={
                       inputType === "email"
                         ? "name@example.com"
-                        : "e.g. 9876543210 or 8015698335"
+                        : "e.g. 9876543210"
                     }
                     className={`block w-full text-black pl-11 pr-4 py-3 border rounded-xl focus:outline-none sm:text-sm transition-colors ${
                       identifierError
@@ -352,7 +433,7 @@ export default function ForgotPassword() {
                 </span>
               </div>
 
-              {/* Submit Button */}
+              {/* Send OTP Button */}
               <button
                 type="submit"
                 disabled={isSubmittingIdentifier}
@@ -361,17 +442,17 @@ export default function ForgotPassword() {
                 {isSubmittingIdentifier ? (
                   <div className="flex items-center space-x-2">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Verifying & Sending OTP...</span>
+                    <span>Sending OTP...</span>
                   </div>
                 ) : (
-                  "Send Verification OTP"
+                  "Send OTP"
                 )}
               </button>
 
               {/* Back to Login Link */}
               <div className="text-center pt-2">
                 <Link
-                  href="/adminlogin"
+                  href="/login"
                   className="inline-flex items-center space-x-1.5 text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -382,7 +463,7 @@ export default function ForgotPassword() {
           )}
 
           {/* ═══════════════════════════════════════════════════════════════ */}
-          {/* STEP 2: Verify OTP                                               */}
+          {/* STEP 2: Enter & Verify OTP                                       */}
           {/* ═══════════════════════════════════════════════════════════════ */}
           {step === "OTP_VERIFICATION" && (
             <form onSubmit={handleVerifyOtp} className="space-y-6">
@@ -402,7 +483,7 @@ export default function ForgotPassword() {
                   htmlFor="otp-input"
                   className="block text-sm font-medium text-gray-700 text-center mb-2"
                 >
-                  Enter 6-Digit Verification Code
+                  Enter OTP
                 </label>
                 <input
                   id="otp-input"
@@ -453,7 +534,7 @@ export default function ForgotPassword() {
                 </button>
               </div>
 
-              {/* Verify Button */}
+              {/* Verify OTP Button */}
               <button
                 type="submit"
                 disabled={isVerifyingOtp || otp.length !== 6}
@@ -462,10 +543,10 @@ export default function ForgotPassword() {
                 {isVerifyingOtp ? (
                   <div className="flex items-center space-x-2">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Verifying & Updating Password...</span>
+                    <span>Verifying OTP...</span>
                   </div>
                 ) : (
-                  "Verify & Generate Password"
+                  "Verify OTP"
                 )}
               </button>
 
@@ -487,28 +568,23 @@ export default function ForgotPassword() {
           )}
 
           {/* ═══════════════════════════════════════════════════════════════ */}
-          {/* STEP 3: Display Generated Password                               */}
+          {/* STEP 3: Password Generator                                        */}
           {/* ═══════════════════════════════════════════════════════════════ */}
-          {step === "SUCCESS_DISPLAY" && (
+          {step === "PASSWORD_GENERATOR" && (
             <div className="space-y-6 text-center">
-              {/* Success Badge */}
-              <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2 ring-8 ring-green-50">
-                <Check className="w-8 h-8 stroke-[2.5]" />
-              </div>
-
               <div>
                 <h2 className="text-lg font-bold text-gray-900">
-                  Password Reset Complete!
+                  Generate Your New Password
                 </h2>
                 <p className="text-xs text-gray-500 mt-1">
-                  Your new password has been automatically generated and updated in the system.
+                  Click <strong>Generate Password</strong> to create a secure password, then click <strong>Use This Password</strong> to update your account.
                 </p>
               </div>
 
-              {/* Password Box */}
+              {/* Password Display Box */}
               <div className="bg-gray-50 border-2 border-dashed border-blue-200 rounded-2xl p-4 sm:p-5">
                 <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">
-                  Your New Generated Password
+                  Generated Password
                 </p>
 
                 <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-inner">
@@ -525,7 +601,7 @@ export default function ForgotPassword() {
                     {isPasswordVisible ? (
                       <EyeOff className="w-5 h-5" />
                     ) : (
-                      <Eye className="w-5 h-5" />
+                      <Eye className="h-5 w-5" />
                     )}
                   </button>
                 </div>
@@ -534,7 +610,7 @@ export default function ForgotPassword() {
                 <button
                   type="button"
                   onClick={handleCopyPassword}
-                  className={`mt-3 w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all ${
+                  className={`mt-3 w-full flex items-center justify-center space-x-2 py-2 px-4 rounded-xl text-xs font-semibold transition-all ${
                     hasCopied
                       ? "bg-green-600 text-white"
                       : "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
@@ -542,38 +618,98 @@ export default function ForgotPassword() {
                 >
                   {hasCopied ? (
                     <>
-                      <Check className="w-4 h-4" />
+                      <Check className="w-3.5 h-3.5" />
                       <span>Copied to Clipboard!</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-4 h-4" />
-                      <span>Copy Generated Password</span>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Password</span>
                     </>
                   )}
                 </button>
               </div>
 
-              {/* Character Rules Advisory */}
+              {/* Character Rules Box */}
               <div className="bg-amber-50/80 border border-amber-200/70 rounded-xl p-3 text-left flex items-start space-x-2 text-xs text-amber-900">
                 <Lock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="font-semibold">Password Format Notice:</p>
+                  <p className="font-semibold">Password Rules:</p>
                   <p className="text-amber-800">
-                    This password contains exclusively uppercase and lowercase English letters
-                    (A-Z, a-z). It contains <strong>no numbers</strong> and{" "}
-                    <strong>no special characters</strong> as specified by security policy.
+                    This password contains exclusively uppercase and lowercase letters (A–Z, a–z).
+                    It contains <strong>no numbers</strong> and <strong>no special characters</strong>.
                   </p>
                 </div>
               </div>
 
-              {/* Login Button */}
+              {/* Action Buttons: Generate Password & Use This Password */}
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={generateNewPassword}
+                  disabled={isGenerating || isApplyingPassword}
+                  className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 transition-all text-sm disabled:opacity-50"
+                >
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  <span>{isGenerating ? "Generating..." : "Generate Password"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleApplyPassword}
+                  disabled={isApplyingPassword || !generatedPassword}
+                  className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-all text-sm disabled:opacity-50"
+                >
+                  {isApplyingPassword ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Updating password...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <span>Use This Password</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* STEP 4: Display Success                                           */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {step === "SUCCESS_DISPLAY" && (
+            <div className="space-y-6 text-center">
+              {/* Success Badge */}
+              <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2 ring-8 ring-green-50">
+                <Check className="w-8 h-8 stroke-[2.5]" />
+              </div>
+
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Password reset successfully.
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  Your new password has been updated. Please login with your new credentials.
+                </p>
+              </div>
+
+              {/* Password Reminder Box */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <p className="text-xs text-gray-500 mb-1">Your New Password:</p>
+                <p className="font-mono text-lg font-bold text-gray-800 tracking-wider">
+                  {generatedPassword}
+                </p>
+              </div>
+
+              {/* Go to Login Button */}
               <button
                 type="button"
-                onClick={() => router.push("/adminlogin")}
+                onClick={() => router.push("/login")}
                 className="w-full py-3 px-4 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                Proceed to Login
+                Go to Login
               </button>
             </div>
           )}

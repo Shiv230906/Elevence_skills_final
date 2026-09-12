@@ -38,6 +38,21 @@ const UserSchema = new mongoose.Schema(
       sparse: true,
       index: true,
     },
+    username: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      lowercase: true,
+    },
+    profilePhoto: {
+      type: String,
+      default: "",
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
