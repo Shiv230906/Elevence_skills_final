@@ -11,6 +11,18 @@ import { ShieldCheck, Clock, ArrowLeft, Loader2, AlertCircle, RefreshCw, Mail } 
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
+export type LoginType = "google" | "credentials";
+
+export interface PendingUser {
+  uid: string;
+  email: string;
+  name: string;
+  photo: string;
+  historyId: string | null;
+  loginType?: LoginType | string;
+  identifier?: string;
+}
+
 export default function VerifyOtpPage() {
   const router = useRouter();
   const dispatch = useDispatch();
@@ -20,13 +32,7 @@ export default function VerifyOtpPage() {
   const [isResending, setIsResending] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [timer, setTimer] = useState<number>(300); // 5 minutes
-  const [pendingUser, setPendingUser] = useState<{
-    uid: string;
-    email: string;
-    name: string;
-    photo: string;
-    historyId: string | null;
-  } | null>(null);
+  const [pendingUser, setPendingUser] = useState<PendingUser | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -148,6 +154,21 @@ export default function VerifyOtpPage() {
           }
         } catch (_) {}
 
+        const currentLoginType = pendingUser?.loginType || (auth.currentUser ? "google" : "credentials");
+
+        if (currentLoginType === "credentials") {
+          // Persist credentials user session in sessionStorage so page reloads/guards preserve login
+          sessionStorage.setItem(
+            "credentials_user",
+            JSON.stringify({
+              uid: uid,
+              name: userName,
+              email: email,
+              photo: userPhoto,
+            })
+          );
+        }
+
         // Dispatch login to Redux
         dispatch(
           login({
@@ -230,6 +251,7 @@ export default function VerifyOtpPage() {
 
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("pending_otp_login");
+      sessionStorage.removeItem("credentials_user");
       sessionStorage.removeItem("auth_provider");
       const uid = pendingUser?.uid || auth.currentUser?.uid;
       if (uid) {

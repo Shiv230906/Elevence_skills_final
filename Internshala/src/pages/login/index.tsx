@@ -28,6 +28,7 @@ export default function LoginPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("pending_otp_login");
+      sessionStorage.removeItem("credentials_user");
       sessionStorage.removeItem("auth_provider");
     }
   }, []);
@@ -117,6 +118,7 @@ export default function LoginPage() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("adminSession");
       sessionStorage.removeItem("pending_otp_login");
+      sessionStorage.removeItem("credentials_user");
       sessionStorage.removeItem("auth_provider");
     }
 
@@ -213,6 +215,7 @@ export default function LoginPage() {
         await signOut(auth);
         if (typeof window !== "undefined") {
           sessionStorage.removeItem("pending_otp_login");
+          sessionStorage.removeItem("credentials_user");
           sessionStorage.removeItem("auth_provider");
         }
         isLoggingInRef.current = false;

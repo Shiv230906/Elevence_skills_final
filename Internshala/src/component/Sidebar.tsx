@@ -121,6 +121,7 @@ const Sidebar = () => {
       // Clear any leftover OTP session data from a previous attempt so we
       // always start a fresh login flow.
       sessionStorage.removeItem("pending_otp_login");
+      sessionStorage.removeItem("credentials_user");
       sessionStorage.removeItem("auth_provider");
     }
 
@@ -199,6 +200,7 @@ const Sidebar = () => {
           name: firebaseUser.displayName || "User",
           photo: firebaseUser.photoURL || "",
           historyId: null,
+          loginType: "google",
         })
       );
     }
@@ -221,6 +223,7 @@ const Sidebar = () => {
         await signOut(auth);
         if (typeof window !== "undefined") {
           sessionStorage.removeItem("pending_otp_login");
+          sessionStorage.removeItem("credentials_user");
           sessionStorage.removeItem("auth_provider");
         }
         isLoggingInRef.current = false;
@@ -237,10 +240,12 @@ const Sidebar = () => {
             name: firebaseUser.displayName || "User",
             photo: firebaseUser.photoURL || "",
             historyId: checkData.historyId || null,
+            loginType: "google",
           })
         );
       }
 
+      dispatch(logout());
       toast.info(t("loginSecurity.otpSent") || "Verification OTP sent to your registered email.");
       isLoggingInRef.current = false;
       setIsLoggingIn(false);
@@ -248,6 +253,7 @@ const Sidebar = () => {
       return;
     } catch (backendErr) {
       console.warn("[Auth] Backend security check error, proceeding to OTP page:", backendErr);
+      dispatch(logout());
       toast.info("Proceeding to OTP verification.");
       isLoggingInRef.current = false;
       setIsLoggingIn(false);
@@ -318,6 +324,7 @@ const Sidebar = () => {
         sessionStorage.removeItem(`otp_verified_${user.uid}`);
       }
       sessionStorage.removeItem("pending_otp_login");
+      sessionStorage.removeItem("credentials_user");
       sessionStorage.removeItem("auth_provider");
     }
     signOut(auth);

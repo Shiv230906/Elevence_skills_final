@@ -80,10 +80,12 @@ const AuthListener = () => {
       } else {
         // No Firebase user. Check if credentials user is already OTP-verified in sessionStorage
         if (typeof window !== "undefined") {
-          const pending = sessionStorage.getItem("pending_otp_login");
-          if (pending) {
+          const creds =
+            sessionStorage.getItem("credentials_user") ||
+            sessionStorage.getItem("pending_otp_login");
+          if (creds) {
             try {
-              const parsed = JSON.parse(pending);
+              const parsed = JSON.parse(creds);
               const isOtpVerified = sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true";
               if (isOtpVerified) {
                 dispatch(
@@ -94,6 +96,9 @@ const AuthListener = () => {
                     email: parsed.email || "",
                   })
                 );
+                if (router.pathname === "/verify-otp") {
+                  router.replace("/");
+                }
                 return;
               }
             } catch (_) {}
@@ -110,8 +115,15 @@ const AuthListener = () => {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const hasPendingOtp = Boolean(sessionStorage.getItem("pending_otp_login"));
-    if (!hasPendingOtp) return;
+    const pending = sessionStorage.getItem("pending_otp_login");
+    if (!pending) return;
+
+    try {
+      const parsed = JSON.parse(pending);
+      if (parsed.uid && sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true") {
+        return;
+      }
+    } catch (_) {}
 
     const publicRoutes = ["/login", "/register", "/verify-otp", "/adminlogin", "/forgot-password"];
     if (!publicRoutes.includes(router.pathname)) {
