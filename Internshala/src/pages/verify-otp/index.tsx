@@ -11,17 +11,8 @@ import { ShieldCheck, Clock, ArrowLeft, Loader2, AlertCircle, RefreshCw, Mail } 
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
-export type LoginType = "google" | "credentials";
-
-export interface PendingUser {
-  uid: string;
-  email: string;
-  name: string;
-  photo: string;
-  historyId: string | null;
-  loginType?: LoginType | string;
-  identifier?: string;
-}
+import type { LoginType, PendingUser } from "@/types/auth";
+export type { LoginType, PendingUser };
 
 export default function VerifyOtpPage() {
   const router = useRouter();
@@ -54,7 +45,7 @@ export default function VerifyOtpPage() {
     const stored = sessionStorage.getItem("pending_otp_login");
     if (stored) {
       try {
-        const parsed = JSON.parse(stored);
+        const parsed: PendingUser = JSON.parse(stored);
         // If OTP was already verified for this UID, go home
         if (parsed.uid && sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true") {
           router.replace("/");

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useDispatch } from "react-redux";
 import { login, logout } from "@/feature/userSlice";
+import type { PendingUser } from "@/types/auth";
 import { auth, googleProvider } from "@/firebase/firebase";
 import { signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
 import { toast } from "react-toastify";
@@ -79,18 +80,16 @@ export default function LoginPage() {
       if (typeof window !== "undefined") {
         sessionStorage.setItem("auth_provider", "credentials");
         sessionStorage.removeItem(`otp_verified_${data.firebaseUid}`);
-        sessionStorage.setItem(
-          "pending_otp_login",
-          JSON.stringify({
-            uid: data.firebaseUid,
-            email: data.email,
-            name: data.name || "User",
-            photo: "",
-            historyId: data.historyId || null,
-            loginType: "credentials",
-            identifier: cleanIdentifier,
-          })
-        );
+        const pendingData: PendingUser = {
+          uid: data.firebaseUid,
+          email: data.email,
+          name: data.name || "User",
+          photo: "",
+          historyId: data.historyId || null,
+          loginType: "credentials",
+          identifier: cleanIdentifier,
+        };
+        sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
       }
 
       // Ensure user is NOT in Redux yet (OTP required)
@@ -180,17 +179,15 @@ export default function LoginPage() {
     if (typeof window !== "undefined") {
       sessionStorage.setItem("auth_provider", "google");
       sessionStorage.removeItem(`otp_verified_${firebaseUser.uid}`);
-      sessionStorage.setItem(
-        "pending_otp_login",
-        JSON.stringify({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          name: firebaseUser.displayName || "User",
-          photo: firebaseUser.photoURL || "",
-          historyId: null,
-          loginType: "google",
-        })
-      );
+      const pendingData: PendingUser = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || "",
+        name: firebaseUser.displayName || "User",
+        photo: firebaseUser.photoURL || "",
+        historyId: null,
+        loginType: "google",
+      };
+      sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
     }
 
     // Check backend security rules and trigger OTP
@@ -236,17 +233,15 @@ export default function LoginPage() {
       }).catch((err) => console.warn("Google user DB sync note:", err));
 
       if (typeof window !== "undefined") {
-        sessionStorage.setItem(
-          "pending_otp_login",
-          JSON.stringify({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            name: firebaseUser.displayName || "User",
-            photo: firebaseUser.photoURL || "",
-            historyId: checkData.historyId || null,
-            loginType: "google",
-          })
-        );
+        const pendingData: PendingUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || "",
+          name: firebaseUser.displayName || "User",
+          photo: firebaseUser.photoURL || "",
+          historyId: checkData.historyId || null,
+          loginType: "google",
+        };
+        sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
       }
 
       // Ensure user is not considered logged in in Redux before OTP verification

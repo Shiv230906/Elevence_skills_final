@@ -9,6 +9,7 @@ import { useEffect } from "react";
 
 import { auth } from "@/firebase/firebase";
 import { login, logout, adminLogin } from "@/feature/userSlice";
+import type { PendingUser } from "@/types/auth";
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import "@/translations/index";
@@ -85,7 +86,7 @@ const AuthListener = () => {
             sessionStorage.getItem("pending_otp_login");
           if (creds) {
             try {
-              const parsed = JSON.parse(creds);
+              const parsed: PendingUser = JSON.parse(creds);
               const isOtpVerified = sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true";
               if (isOtpVerified) {
                 dispatch(
@@ -119,7 +120,7 @@ const AuthListener = () => {
     if (!pending) return;
 
     try {
-      const parsed = JSON.parse(pending);
+      const parsed: PendingUser = JSON.parse(pending);
       if (parsed.uid && sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true") {
         return;
       }

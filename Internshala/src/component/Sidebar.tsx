@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
 import { login, logout, selectuser, selectisAdmin } from "@/feature/userSlice";
+import type { PendingUser } from "@/types/auth";
 import { auth, googleProvider } from "../firebase/firebase";
 import { signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
 import { toast } from "react-toastify";
@@ -192,17 +193,15 @@ const Sidebar = () => {
     if (typeof window !== "undefined") {
       sessionStorage.setItem("auth_provider", "google");
       sessionStorage.removeItem(`otp_verified_${firebaseUser.uid}`);
-      sessionStorage.setItem(
-        "pending_otp_login",
-        JSON.stringify({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          name: firebaseUser.displayName || "User",
-          photo: firebaseUser.photoURL || "",
-          historyId: null,
-          loginType: "google",
-        })
-      );
+      const pendingData: PendingUser = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || "",
+        name: firebaseUser.displayName || "User",
+        photo: firebaseUser.photoURL || "",
+        historyId: null,
+        loginType: "google",
+      };
+      sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
     }
 
     try {
@@ -232,17 +231,15 @@ const Sidebar = () => {
       }
 
       if (typeof window !== "undefined") {
-        sessionStorage.setItem(
-          "pending_otp_login",
-          JSON.stringify({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            name: firebaseUser.displayName || "User",
-            photo: firebaseUser.photoURL || "",
-            historyId: checkData.historyId || null,
-            loginType: "google",
-          })
-        );
+        const pendingData: PendingUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || "",
+          name: firebaseUser.displayName || "User",
+          photo: firebaseUser.photoURL || "",
+          historyId: checkData.historyId || null,
+          loginType: "google",
+        };
+        sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
       }
 
       dispatch(logout());
