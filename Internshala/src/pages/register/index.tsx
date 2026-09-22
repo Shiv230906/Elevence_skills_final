@@ -92,22 +92,29 @@ export default function RegisterPage() {
     try {
       setIsLoading(true);
 
-      // 7. Check if user already exists in database
-      const checkRes = await fetch(`${BACKEND_URL}/api/auth/check-exists`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim(),
-          username: username.trim(),
-          phone: cleanedPhone,
-        }),
-      });
+      // 7. Check if user already exists in database (graceful — if endpoint is unavailable, skip pre-check)
+      try {
+        const checkRes = await fetch(`${BACKEND_URL}/api/auth/check-exists`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(),
+            username: username.trim(),
+            phone: cleanedPhone,
+          }),
+        });
 
-      const checkData = await checkRes.json();
-      if (checkData.exists) {
-        setErrorMessage(checkData.message || "An account with these details already exists.");
-        toast.error(checkData.message || "Account already exists.");
-        return;
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData.exists) {
+            setErrorMessage(checkData.message || "An account with these details already exists.");
+            toast.error(checkData.message || "Account already exists.");
+            return;
+          }
+        }
+        // If checkRes is not ok (404, 500, etc.) → skip pre-check and let Firebase + DB handle duplicates
+      } catch (checkErr) {
+        console.warn("[Register] Pre-check unavailable, proceeding to Firebase registration:", checkErr);
       }
 
       // 8. Create Firebase Authentication Account
@@ -127,40 +134,61 @@ export default function RegisterPage() {
       } catch (fbError: any) {
         console.error("Firebase registration error:", fbError);
         if (fbError.code === "auth/email-already-in-use") {
-          const msg = "An account with this email address already exists. Please login.";
+          const msg = "An account with this email address already exists. Please log in instead.";
           setErrorMessage(msg);
           toast.error(msg);
           return;
         }
         if (fbError.code === "auth/weak-password") {
-          const msg = "Password is too weak. Please use a stronger password.";
+          const msg = "Password is too weak. Please use at least 6 characters with letters and numbers.";
           setErrorMessage(msg);
           toast.error(msg);
           return;
         }
-        const msg = fbError.message || "Failed to create authentication account.";
+        if (fbError.code === "auth/network-request-failed") {
+          const msg = "Network error. Please check your internet connection and try again.";
+          setErrorMessage(msg);
+          toast.error(msg);
+          return;
+        }
+        if (fbError.code === "auth/too-many-requests") {
+          const msg = "Too many attempts. Please wait a few minutes and try again.";
+          setErrorMessage(msg);
+          toast.error(msg);
+          return;
+        }
+        const msg = fbError.message || "Failed to create authentication account. Please try again.";
         setErrorMessage(msg);
         toast.error(msg);
         return;
       }
 
-      // 9. Store profile/details in the database
-      const dbRes = await fetch(`${BACKEND_URL}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firebaseUid: firebaseUser.uid,
-          fullName: fullName.trim(),
-          username: username.trim(),
-          email: email.trim(),
-          phone: cleanedPhone,
-          password: password,
-        }),
-      });
+      // 9. Store profile/details in the database (graceful — registration succeeds even if DB sync fails)
+      try {
+        const dbRes = await fetch(`${BACKEND_URL}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firebaseUid: firebaseUser.uid,
+            fullName: fullName.trim(),
+            username: username.trim(),
+            email: email.trim(),
+            phone: cleanedPhone,
+            password: password,
+          }),
+        });
 
-      const dbData = await dbRes.json();
-      if (!dbRes.ok || !dbData.success) {
-        console.warn("Database sync warning:", dbData.message);
+        if (dbRes.ok) {
+          const dbData = await dbRes.json();
+          if (!dbData.success) {
+            console.warn("[Register] DB sync returned non-success:", dbData.message);
+          }
+        } else {
+          console.warn("[Register] DB sync HTTP error:", dbRes.status, dbRes.statusText);
+        }
+      } catch (dbErr) {
+        // Non-fatal: Firebase account was created. DB sync failure should not abort registration.
+        console.warn("[Register] DB sync failed (non-fatal):", dbErr);
       }
 
       // Sign out from Firebase so user goes through the normal login + OTP verification flow
@@ -168,11 +196,15 @@ export default function RegisterPage() {
         await signOut(auth);
       } catch (_) {}
 
-      toast.success("Account created successfully! Please sign in to verify.");
+      toast.success("Account created successfully! Please sign in to continue.");
       router.push("/login");
     } catch (err: any) {
       console.error("Registration error:", err);
-      const msg = "An unexpected error occurred during registration. Please try again.";
+      // Show a more specific message if we can
+      const errMsg = typeof err?.message === "string" ? err.message : "";
+      const msg = errMsg
+        ? `Registration failed: ${errMsg}`
+        : "An unexpected error occurred during registration. Please try again.";
       setErrorMessage(msg);
       toast.error(msg);
     } finally {
