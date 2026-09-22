@@ -40,7 +40,8 @@ const AuthListener = () => {
         const uid = authuser.uid;
         const isOtpVerified =
           typeof window !== "undefined" &&
-          sessionStorage.getItem(`otp_verified_${uid}`) === "true";
+          (localStorage.getItem(`otp_verified_${uid}`) === "true" ||
+            sessionStorage.getItem(`otp_verified_${uid}`) === "true");
 
         if (isOtpVerified) {
           // OTP verified → allow Redux login
@@ -79,15 +80,18 @@ const AuthListener = () => {
         dispatch(logout());
         return;
       } else {
-        // No Firebase user. Check if credentials user is already OTP-verified in sessionStorage
+        // No Firebase user. Check if credentials user is already OTP-verified in storage
         if (typeof window !== "undefined") {
           const creds =
+            localStorage.getItem("credentials_user") ||
             sessionStorage.getItem("credentials_user") ||
             sessionStorage.getItem("pending_otp_login");
           if (creds) {
             try {
               const parsed: PendingUser = JSON.parse(creds);
-              const isOtpVerified = sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true";
+              const isOtpVerified =
+                localStorage.getItem(`otp_verified_${parsed.uid}`) === "true" ||
+                sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true";
               if (isOtpVerified) {
                 dispatch(
                   login({
@@ -121,7 +125,11 @@ const AuthListener = () => {
 
     try {
       const parsed: PendingUser = JSON.parse(pending);
-      if (parsed.uid && sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true") {
+      if (
+        parsed.uid &&
+        (localStorage.getItem(`otp_verified_${parsed.uid}`) === "true" ||
+          sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true")
+      ) {
         return;
       }
     } catch (_) {}

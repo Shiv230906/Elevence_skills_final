@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Mail, KeyRound, CheckCircle, AlertCircle, Loader2, X, RefreshCw } from "lucide-react";
 import { toast } from "react-toastify";
 import axios from "axios";
+import { API_URL } from "@/config/api";
 
 interface OtpVerificationModalProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
   if (!isOpen) return null;
 
   const getBackendUrl = (): string => {
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+    return API_URL;
   };
 
   // Helper for API calls with fallback

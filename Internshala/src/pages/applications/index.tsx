@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
+import { API_URL } from "@/config/api";
 
 const getStatusColor = (status: any) => {
   if (!status) return "bg-yellow-100 text-yellow-800";
@@ -31,16 +32,11 @@ const Applications = () => {
   const [filter, setFilter] = useState("all");
   const [data, setdata] = useState<any>([]);
 
-  const getBackendUrl = (): string => {
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-  };
-
   useEffect(() => {
     const fetchdata = async () => {
       const urls = [
-        `${getBackendUrl()}/application`,
+        `${API_URL}/application`,
         "https://elevance-skill.onrender.com/api/application",
-        "https://internshala-clone-y2p2.onrender.com/api/application",
       ];
       for (const url of urls) {
         try {
@@ -70,9 +66,8 @@ const Applications = () => {
     try {
       let res;
       const urls = [
-        `${getBackendUrl()}/application/${id}`,
+        `${API_URL}/application/${id}`,
         `https://elevance-skill.onrender.com/api/application/${id}`,
-        `https://internshala-clone-y2p2.onrender.com/api/application/${id}`,
       ];
       for (const url of urls) {
         try {

@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Friend = require("../Model/Friend");
+const User = require("../Model/User");
+const Post = require("../Model/Post");
 
 /**
  * POST /api/friends/request
@@ -79,19 +82,32 @@ router.get("/requests/:userId", async (req, res) => {
       status: "pending",
     }).sort({ createdAt: -1 });
 
-    // Enrich with requester info from Post collection
-    const Post = require("../Model/Post");
+    // Enrich with requester info from User model, fallback to Post
     const enriched = await Promise.all(
       requests.map(async (req) => {
         const reqObj = req.toObject();
         try {
-          const post = await Post.findOne(
-            { userId: reqObj.requester },
-            { userName: 1, userPhoto: 1 }
-          ).sort({ createdAt: -1 });
-          if (post) {
-            reqObj.requesterName = post.userName;
-            reqObj.requesterPhoto = post.userPhoto;
+          const userDoc = await User.findOne(
+            {
+              $or: [
+                { firebaseUid: reqObj.requester },
+                ...(mongoose.isValidObjectId(reqObj.requester) ? [{ _id: reqObj.requester }] : []),
+              ],
+            },
+            { name: 1, profilePhoto: 1, email: 1 }
+          );
+          if (userDoc) {
+            reqObj.requesterName = userDoc.name;
+            reqObj.requesterPhoto = userDoc.profilePhoto;
+          } else {
+            const post = await Post.findOne(
+              { userId: reqObj.requester },
+              { userName: 1, userPhoto: 1 }
+            ).sort({ createdAt: -1 });
+            if (post) {
+              reqObj.requesterName = post.userName;
+              reqObj.requesterPhoto = post.userPhoto;
+            }
           }
         } catch (_) {}
         return reqObj;
@@ -213,17 +229,30 @@ router.get("/:userId", async (req, res) => {
       status: "accepted",
     }).sort({ updatedAt: -1 });
 
-    // Normalize: return the "other" user's ID, enriched with name/photo from Post
-    const Post = require("../Model/Post");
+    // Normalize: return the "other" user's ID, enriched with name/photo from User (fallback to Post)
     const friends = await Promise.all(
       friendships.map(async (f) => {
         const friendId = f.requester === userId ? f.receiver : f.requester;
         const base = { _id: f._id, friendId, since: f.updatedAt };
         try {
-          const post = await Post.findOne({ userId: friendId }, { userName: 1, userPhoto: 1 }).sort({ createdAt: -1 });
-          if (post) {
-            base.name = post.userName;
-            base.photo = post.userPhoto;
+          const userDoc = await User.findOne(
+            {
+              $or: [
+                { firebaseUid: friendId },
+                ...(mongoose.isValidObjectId(friendId) ? [{ _id: friendId }] : []),
+              ],
+            },
+            { name: 1, profilePhoto: 1 }
+          );
+          if (userDoc) {
+            base.name = userDoc.name;
+            base.photo = userDoc.profilePhoto;
+          } else {
+            const post = await Post.findOne({ userId: friendId }, { userName: 1, userPhoto: 1 }).sort({ createdAt: -1 });
+            if (post) {
+              base.name = post.userName;
+              base.photo = post.userPhoto;
+            }
           }
         } catch (_) {}
         return base;

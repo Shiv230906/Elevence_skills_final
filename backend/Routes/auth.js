@@ -422,9 +422,18 @@ router.post("/verify-login-otp", async (req, res) => {
         user.firebaseUid = effectiveUid;
       }
       await user.save();
+    } else if (effectiveUid || userEmail) {
+      user = new User({
+        firebaseUid: effectiveUid,
+        email: userEmail ? userEmail.toLowerCase().trim() : undefined,
+        name: userEmail ? userEmail.split("@")[0] : "User",
+        role: "user",
+        lastLoginAt: new Date(),
+      });
+      await user.save();
     }
   } catch (dbErr) {
-    console.warn("[AUTH] Could not update user lastLoginAt:", dbErr.message);
+    console.warn("[AUTH] Could not update/create user record:", dbErr.message);
   }
 
   console.log(`[AUTH OTP] Login OTP verified successfully for ${userEmail}`);

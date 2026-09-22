@@ -11,6 +11,7 @@ const auth = require("./auth");
 const friends = require("./friends");
 const users = require("./users");
 const posts = require("./posts");
+const opportunities = require("./opportunities");
 
 
 router.use("/admin", admin);
@@ -24,5 +25,6 @@ router.use("/auth", auth);
 router.use("/friends", friends);
 router.use("/users", users);
 router.use("/posts", posts);
+router.use("/opportunities", opportunities);
 
 module.exports = router;

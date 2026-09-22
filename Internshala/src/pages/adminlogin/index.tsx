@@ -9,7 +9,7 @@ import { adminLogin } from "@/feature/userSlice";
 import { auth } from "@/firebase/firebase";
 import { signOut } from "firebase/auth";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+import { API_URL } from "@/config/api";
 
 const index = () => {
   const dispatch = useDispatch();
@@ -36,27 +36,16 @@ const index = () => {
       setisloading(true);
       let res;
       try {
-        res = await axios.post(`${BACKEND_URL}/api/admin/adminlogin`, formadata);
-      } catch {
-        try {
-          res = await axios.post("https://elevance-skill.onrender.com/api/admin/adminlogin", formadata);
-        } catch {
-          try {
-            res = await axios.post(
-              "https://internshala-clone-y2p2.onrender.com/api/admin/adminlogin",
-              formadata
-            );
-          } catch {
-            // Dev local fallback if backend endpoints unavailable
-            if (
-              (formadata.username === "admin" && formadata.password === "admin123") ||
-              (formadata.username === "admin" && formadata.password === "admin")
-            ) {
-              res = { data: "admin is here" };
-            } else {
-              throw new Error("Invalid credentials");
-            }
-          }
+        res = await axios.post(`${API_URL}/admin/adminlogin`, formadata);
+      } catch (apiErr) {
+        // Dev local fallback if backend endpoints unavailable
+        if (
+          (formadata.username === "admin" && formadata.password === "admin123") ||
+          (formadata.username === "admin" && formadata.password === "admin")
+        ) {
+          res = { data: "admin is here" };
+        } else {
+          throw apiErr;
         }
       }
       if (typeof window !== "undefined") {

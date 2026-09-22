@@ -9,7 +9,7 @@ import { signOut } from "firebase/auth";
 import { toast } from "react-toastify";
 import { ShieldCheck, Clock, ArrowLeft, Loader2, AlertCircle, RefreshCw, Mail } from "lucide-react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 import type { LoginType, PendingUser } from "@/types/auth";
 export type { LoginType, PendingUser };
@@ -128,7 +128,8 @@ export default function VerifyOtpPage() {
       const data = await response.json();
 
       if (response.ok && data.allowed) {
-        // Mark OTP as verified for this UID in sessionStorage
+        // Mark OTP as verified for this UID in both localStorage and sessionStorage
+        localStorage.setItem(`otp_verified_${uid}`, "true");
         sessionStorage.setItem(`otp_verified_${uid}`, "true");
         sessionStorage.removeItem("pending_otp_login");
 
@@ -145,19 +146,30 @@ export default function VerifyOtpPage() {
           }
         } catch (_) {}
 
+        // Ensure user is registered/upserted in MongoDB User collection for Friends discovery
+        fetch(`${BACKEND_URL}/api/users/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: uid,
+            name: userName,
+            email: email,
+            photo: userPhoto,
+          }),
+        }).catch((err) => console.warn("[Verify OTP] User registration sync notice:", err));
+
         const currentLoginType = pendingUser?.loginType || (auth.currentUser ? "google" : "credentials");
 
         if (currentLoginType === "credentials") {
-          // Persist credentials user session in sessionStorage so page reloads/guards preserve login
-          sessionStorage.setItem(
-            "credentials_user",
-            JSON.stringify({
-              uid: uid,
-              name: userName,
-              email: email,
-              photo: userPhoto,
-            })
-          );
+          // Persist credentials user session in localStorage and sessionStorage
+          const credsString = JSON.stringify({
+            uid: uid,
+            name: userName,
+            email: email,
+            photo: userPhoto,
+          });
+          localStorage.setItem("credentials_user", credsString);
+          sessionStorage.setItem("credentials_user", credsString);
         }
 
         // Dispatch login to Redux

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import axios from "axios";
+import { API_URL } from "@/config/api";
 
 export default function SvgSlider() {
   const { t } = useTranslation();
@@ -65,13 +66,13 @@ export default function SvgSlider() {
         let internshipres, jobres;
         try {
           [internshipres, jobres] = await Promise.all([
-            axios.get("https://elevance-skill.onrender.com/api/internship"),
-            axios.get("https://elevance-skill.onrender.com/api/job"),
+            axios.get(`${API_URL}/internship`),
+            axios.get(`${API_URL}/job`),
           ]);
         } catch {
           [internshipres, jobres] = await Promise.all([
-            axios.get("https://internshala-clone-y2p2.onrender.com/api/internship"),
-            axios.get("https://internshala-clone-y2p2.onrender.com/api/job"),
+            axios.get("https://elevance-skill.onrender.com/api/internship"),
+            axios.get("https://elevance-skill.onrender.com/api/job"),
           ]);
         }
         setinternship(internshipres.data);

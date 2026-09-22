@@ -6,7 +6,7 @@ import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { useTranslation } from "react-i18next";
 
-const BACKEND_URL = "http://localhost:5000";
+import { BACKEND_URL, API_URL } from "@/config/api";
 
 interface UserInterface {
   name: string;
@@ -44,12 +44,7 @@ const ProfilePage = () => {
   useEffect(() => {
     const fetchdata = async () => {
       try {
-        let res;
-        try {
-          res = await axios.get(`${BACKEND_URL}/api/application`);
-        } catch {
-          res = await axios.get("https://internshala-clone-y2p2.onrender.com/api/application");
-        }
+        const res = await axios.get(`${API_URL}/application`);
         setdata(res.data);
       } catch (error) {
         console.log(error);

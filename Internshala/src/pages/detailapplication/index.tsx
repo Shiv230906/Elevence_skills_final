@@ -2,6 +2,7 @@ import axios from "axios";
 import { Building2, Calendar, ExternalLink, FileText, Loader2, User } from "lucide-react";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
+import { API_URL } from "@/config/api";
 
 const index = () => {
   const router = useRouter();
@@ -9,19 +10,14 @@ const index = () => {
   const [loading, setloading] = useState(false);
   const [data, setdata] = useState<any>({});
 
-  const getBackendUrl = (): string => {
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-  };
-
   useEffect(() => {
     const fetchdata = async () => {
       if (!id) return;
       try {
         setloading(true);
         const urls = [
-          `${getBackendUrl()}/application/${id}`,
+          `${API_URL}/application/${id}`,
           `https://elevance-skill.onrender.com/api/application/${id}`,
-          `https://internshala-clone-y2p2.onrender.com/api/application/${id}`,
         ];
 
         for (const url of urls) {

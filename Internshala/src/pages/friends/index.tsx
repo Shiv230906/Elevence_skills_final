@@ -7,7 +7,7 @@ import { toast } from "react-toastify";
 import Head from "next/head";
 import Link from "next/link";
 
-const BACKEND_URL = "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 type Tab = "find" | "requests" | "friends";
 
@@ -301,10 +301,19 @@ const FriendsPage = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Users size={48} className="text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">Please log in to view Friends.</p>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="text-center bg-white border border-gray-200/80 rounded-2xl p-8 max-w-sm w-full shadow-sm">
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Users size={32} />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 mb-1">Connect with Friends</h2>
+          <p className="text-sm text-gray-500 mb-6">Please log in to your account to find, add, and connect with other users.</p>
+          <Link
+            href="/login"
+            className="w-full inline-flex items-center justify-center py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-xs"
+          >
+            Sign In to Continue
+          </Link>
         </div>
       </div>
     );

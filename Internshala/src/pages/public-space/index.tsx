@@ -8,7 +8,7 @@ import PostComposer from "@/components/public-space/PostComposer";
 import PostCard from "@/components/public-space/PostCard";
 import Head from "next/head";
 
-const BACKEND_URL = "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 interface Post {
   _id: string;

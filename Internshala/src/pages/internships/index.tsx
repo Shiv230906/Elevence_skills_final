@@ -11,10 +11,22 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { API_URL } from "@/config/api";
 
 const index = () => {
+  const router = useRouter();
+  const queryQ = typeof router.query.q === "string" ? router.query.q : "";
+  const [searchKeyword, setSearchKeyword] = useState("");
+
+  useEffect(() => {
+    if (queryQ) {
+      setSearchKeyword(queryQ);
+    }
+  }, [queryQ]);
+
   const [filteredInternships, setfilteredInternships] = useState<any>([]);
   const [isFiltervisible, setisFiltervisible] = useState(false);
   const { t } = useTranslation();
@@ -25,15 +37,16 @@ const index = () => {
     partTime: false,
     stipend: 50,
   });
-  const [internshipData, setinternship] = useState<any>([])
+  const [internshipData, setinternship] = useState<any>([]);
+
   useEffect(() => {
     const fetchdata = async () => {
       try {
         let res;
         try {
-          res = await axios.get("https://elevance-skill.onrender.com/api/internship");
+          res = await axios.get(`${API_URL}/internship`);
         } catch {
-          res = await axios.get("https://internshala-clone-y2p2.onrender.com/api/internship");
+          res = await axios.get("https://elevance-skill.onrender.com/api/internship");
         }
         setinternship(res.data);
         setfilteredInternships(res.data);
@@ -43,18 +56,25 @@ const index = () => {
     };
     fetchdata();
   }, []);
+
   useEffect(() => {
     const filtered = internshipData.filter((internship: any) => {
-      const matchesCategory = internship.category
+      const matchesCategory = (internship.category || "")
         .toLowerCase()
         .includes(filter.category.toLowerCase());
-      const matchesLocation = internship.location
+      const matchesLocation = (internship.location || "")
         .toLowerCase()
         .includes(filter.location.toLowerCase());
-      return matchesCategory && matchesLocation;
+      const matchesSearch = !searchKeyword.trim() || (
+        (internship.title || "").toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        (internship.company || "").toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        (internship.category || "").toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        (internship.location || "").toLowerCase().includes(searchKeyword.toLowerCase())
+      );
+      return matchesCategory && matchesLocation && matchesSearch;
     });
     setfilteredInternships(filtered);
-  }, [filter, internshipData]);
+  }, [filter, internshipData, searchKeyword]);
   const handlefilterchange = (e: any) => {
     const { name, value, type, checked } = e.target;
     setfilters((prev) => ({

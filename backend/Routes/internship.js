@@ -39,7 +39,30 @@ router.post("/", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const data = await Internship.find().sort({ createdAt: -1 });
+    const { q, category, location } = req.query;
+    const filter = {};
+
+    if (q && q.trim()) {
+      const regex = new RegExp(q.trim(), "i");
+      filter.$or = [
+        { title: regex },
+        { company: regex },
+        { category: regex },
+        { location: regex },
+        { aboutInternship: regex },
+        { whoCanApply: regex },
+      ];
+    }
+
+    if (category && category.trim()) {
+      filter.category = new RegExp(category.trim(), "i");
+    }
+
+    if (location && location.trim()) {
+      filter.location = new RegExp(location.trim(), "i");
+    }
+
+    const data = await Internship.find(filter).sort({ createdAt: -1 });
     res.status(200).json(data);
   } catch (error) {
     console.log(error);

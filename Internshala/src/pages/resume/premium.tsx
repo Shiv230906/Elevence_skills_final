@@ -4,6 +4,7 @@ import { selectuser } from "@/feature/userSlice";
 import { auth } from "@/firebase/firebase";
 import { useRouter } from "next/router";
 import axios from "axios";
+import { API_URL } from "@/config/api";
 import { toast } from "react-toastify";
 import {
   Sparkles,
@@ -35,32 +36,15 @@ const ResumePremiumPage: React.FC = () => {
     return user?.uid || auth.currentUser?.uid || "";
   };
 
-  const getBackendUrl = (): string => {
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-  };
-
   const makeApiCall = async (method: "get" | "post", endpoint: string, payload?: any) => {
-    const urls = [
-      `${getBackendUrl()}${endpoint}`,
-      `https://elevance-skill.onrender.com/api${endpoint}`,
-      `https://internshala-clone-y2p2.onrender.com/api${endpoint}`,
-    ];
-
-    let lastError: any = null;
-    for (const url of urls) {
-      try {
-        if (method === "get") {
-          const res = await axios.get(url);
-          return res.data;
-        } else {
-          const res = await axios.post(url, payload);
-          return res.data;
-        }
-      } catch (err: any) {
-        lastError = err;
-      }
+    const url = `${API_URL}${endpoint}`;
+    if (method === "get") {
+      const res = await axios.get(url);
+      return res.data;
+    } else {
+      const res = await axios.post(url, payload);
+      return res.data;
     }
-    throw lastError;
   };
 
   // Dynamically load Razorpay SDK

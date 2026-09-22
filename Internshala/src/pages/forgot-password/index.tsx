@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 type ResetStep = "IDENTIFIER_INPUT" | "OTP_VERIFICATION" | "PASSWORD_GENERATOR" | "SUCCESS_DISPLAY";
 

@@ -10,7 +10,7 @@ import { signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
 import { toast } from "react-toastify";
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -157,8 +157,17 @@ export default function LoginPage() {
         }
       }
 
+      if (error?.code === "auth/unauthorized-domain") {
+        const currentHost = typeof window !== "undefined" ? window.location.hostname : "your Vercel domain";
+        const msg = `Domain '${currentHost}' is not authorized in Firebase Console. Please add '${currentHost}' to Firebase Console -> Authentication -> Settings -> Authorized Domains.`;
+        setErrorMessage(msg);
+        toast.error(msg, { autoClose: 7000 });
+        isLoggingInRef.current = false;
+        setIsGoogleLoading(false);
+        return;
+      }
+
       if (
-        error?.code === "auth/unauthorized-domain" ||
         error?.code === "auth/operation-not-allowed" ||
         error?.code === "auth/configuration-not-found" ||
         error?.code === "auth/internal-error"

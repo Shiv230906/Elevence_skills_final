@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Send, Trash2, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "react-toastify";
 
-const BACKEND_URL = "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 interface Comment {
   _id: string;

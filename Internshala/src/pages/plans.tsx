@@ -6,6 +6,7 @@ import { selectuser } from "@/feature/userSlice";
 import { auth } from "@/firebase/firebase";
 import axios from "axios";
 import { toast } from "react-toastify";
+import { API_URL } from "@/config/api";
 import {
   Check,
   Clock,
@@ -98,7 +99,7 @@ const PlansPage: React.FC = () => {
   };
 
   const getBackendUrl = (): string => {
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+    return API_URL;
   };
 
   const makeApiCall = async (method: "get" | "post", endpoint: string, payload?: any) => {

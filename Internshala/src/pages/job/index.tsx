@@ -10,11 +10,23 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { API_URL } from "@/config/api";
 
 const index = () => {
- const { t } = useTranslation();
+  const { t } = useTranslation();
+  const router = useRouter();
+  const queryQ = typeof router.query.q === "string" ? router.query.q : "";
+  const [searchKeyword, setSearchKeyword] = useState("");
+
+  useEffect(() => {
+    if (queryQ) {
+      setSearchKeyword(queryQ);
+    }
+  }, [queryQ]);
+
   const [filteredjob, setfilteredjobs] = useState<any>([]);
   const [isFiltervisible, setisFiltervisible] = useState(false);
   const [filter, setfilters] = useState({
@@ -25,15 +37,16 @@ const index = () => {
     salary: 50,
     experience: "",
   });
-  const [filteredJobs, setjob] = useState<any>([])
+  const [filteredJobs, setjob] = useState<any>([]);
+
   useEffect(() => {
     const fetchdata = async () => {
       try {
         let res;
         try {
-          res = await axios.get("https://elevance-skill.onrender.com/api/job");
+          res = await axios.get(`${API_URL}/job`);
         } catch {
-          res = await axios.get("https://internshala-clone-y2p2.onrender.com/api/job");
+          res = await axios.get("https://elevance-skill.onrender.com/api/job");
         }
         setjob(res.data);
         setfilteredjobs(res.data);
@@ -43,18 +56,25 @@ const index = () => {
     };
     fetchdata();
   }, []);
+
   useEffect(() => {
     const filtered = filteredJobs.filter((job: any) => {
-      const matchesCategory = job.category
+      const matchesCategory = (job.category || "")
         .toLowerCase()
         .includes(filter.category.toLowerCase());
-      const matchesLocation = job.location
+      const matchesLocation = (job.location || "")
         .toLowerCase()
         .includes(filter.location.toLowerCase());
-      return matchesCategory && matchesLocation;
+      const matchesSearch = !searchKeyword.trim() || (
+        (job.title || "").toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        (job.company || "").toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        (job.category || "").toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        (job.location || "").toLowerCase().includes(searchKeyword.toLowerCase())
+      );
+      return matchesCategory && matchesLocation && matchesSearch;
     });
     setfilteredjobs(filtered);
-  }, [filter, filteredJobs]);
+  }, [filter, filteredJobs, searchKeyword]);
   const handlefilterchange = (e: any) => {
     const { name, value, type, checked } = e.target;
     setfilters((prev) => ({

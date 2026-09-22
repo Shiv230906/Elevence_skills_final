@@ -7,7 +7,7 @@ import { createUserWithEmailAndPassword, updateProfile, signOut } from "firebase
 import { toast } from "react-toastify";
 import { User, Mail, Phone, AtSign, Lock, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 export default function RegisterPage() {
   const router = useRouter();

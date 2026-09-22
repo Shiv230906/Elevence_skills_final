@@ -26,9 +26,11 @@ import {
   X,
   LogOut,
   User as UserIcon,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+import { BACKEND_URL, API_URL } from "@/config/api";
 
 const Sidebar = () => {
   const user = useSelector(selectuser);
@@ -52,6 +54,112 @@ const Sidebar = () => {
   const isAdmin = Boolean(isAdminRedux || isAdminState);
   const isStudent = !isAdmin && Boolean(user);
   const isGuest = !isAdmin && !user;
+
+  // ── Opportunities Search State ─────────────────────────────────────────────
+  interface SearchResultItem {
+    _id: string;
+    title: string;
+    company: string;
+    location: string;
+    category?: string;
+    stipend?: string;
+    CTC?: string;
+    type: "internship" | "job";
+  }
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Debounced live search
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setIsSearching(false);
+      setSearchError(null);
+      setIsSearchOpen(false);
+      return;
+    }
+
+    setIsSearchOpen(true);
+    setIsSearching(true);
+    setSearchError(null);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_URL}/opportunities/search?q=${encodeURIComponent(trimmed)}&limit=6`);
+        if (!res.ok) throw new Error("Search request failed");
+        const data = await res.json();
+        if (data.success) {
+          const items: SearchResultItem[] = [
+            ...(data.internships || []).map((item: any) => ({ ...item, type: "internship" as const })),
+            ...(data.jobs || []).map((item: any) => ({ ...item, type: "job" as const })),
+          ];
+          setSearchResults(items);
+        } else {
+          setSearchResults([]);
+        }
+      } catch (err) {
+        console.warn("[Sidebar Search] Opportunities search failed, falling back to direct endpoints:", err);
+        try {
+          const [intRes, jobRes] = await Promise.all([
+            fetch(`${API_URL}/internship?q=${encodeURIComponent(trimmed)}`),
+            fetch(`${API_URL}/job?q=${encodeURIComponent(trimmed)}`),
+          ]);
+          const intData = intRes.ok ? await intRes.json() : [];
+          const jobData = jobRes.ok ? await jobRes.json() : [];
+          const items: SearchResultItem[] = [
+            ...(Array.isArray(intData) ? intData.slice(0, 4) : []).map((item: any) => ({ ...item, type: "internship" as const })),
+            ...(Array.isArray(jobData) ? jobData.slice(0, 4) : []).map((item: any) => ({ ...item, type: "job" as const })),
+          ];
+          setSearchResults(items);
+        } catch (fallbackErr) {
+          setSearchError("Unable to load search results.");
+          setSearchResults([]);
+        }
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Click outside listener to close search dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSearchSubmit = () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    setIsSearchOpen(false);
+    setIsMobileOpen(false);
+    if (searchResults.length > 0) {
+      const first = searchResults[0];
+      const href = first.type === "internship" ? `/detailinternship/${first._id}` : `/detailjob/${first._id}`;
+      router.push(href);
+    } else {
+      router.push(`/internships?q=${encodeURIComponent(trimmed)}`);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setIsSearchOpen(false);
+    setSearchError(null);
+  };
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -162,24 +270,22 @@ const Sidebar = () => {
           console.error("Redirect login error:", redirectErr);
         }
       }
+      if (error?.code === "auth/unauthorized-domain") {
+        const currentHost = typeof window !== "undefined" ? window.location.hostname : "your Vercel domain";
+        toast.error(
+          `Domain '${currentHost}' is not authorized in Firebase Console. Please add it to Firebase Authentication -> Settings -> Authorized Domains.`,
+          { autoClose: 7000 }
+        );
+        isLoggingInRef.current = false;
+        setIsLoggingIn(false);
+        return;
+      }
       if (
-        error?.code === "auth/unauthorized-domain" ||
         error?.code === "auth/operation-not-allowed" ||
         error?.code === "auth/configuration-not-found" ||
         error?.code === "auth/internal-error"
       ) {
-        dispatch(
-          login({
-            name: "Rahul",
-            email: "rahul@example.com",
-            photo: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=64&h=64&fit=crop&crop=faces",
-          })
-        );
-        if (error?.code === "auth/unauthorized-domain") {
-          toast.warn("Add your domain to Firebase Console -> Authorized Domains. Logged in as Demo User.");
-        } else {
-          toast.info("Logged in as Demo User");
-        }
+        toast.error("Google authentication configuration issue. Please try email/password login.");
         isLoggingInRef.current = false;
         setIsLoggingIn(false);
         return;
@@ -229,6 +335,18 @@ const Sidebar = () => {
         setIsLoggingIn(false);
         return;
       }
+
+      // Sync Google user profile to MongoDB User database immediately
+      fetch(`${BACKEND_URL}/api/users/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: firebaseUser.uid,
+          name: firebaseUser.displayName || "User",
+          email: firebaseUser.email,
+          photo: firebaseUser.photoURL || "",
+        }),
+      }).catch((err) => console.warn("[Sidebar Auth] User DB sync notice:", err));
 
       if (typeof window !== "undefined") {
         const pendingData: PendingUser = {
@@ -318,8 +436,10 @@ const Sidebar = () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("adminSession");
       if (user?.uid) {
+        localStorage.removeItem(`otp_verified_${user.uid}`);
         sessionStorage.removeItem(`otp_verified_${user.uid}`);
       }
+      localStorage.removeItem("credentials_user");
       sessionStorage.removeItem("pending_otp_login");
       sessionStorage.removeItem("credentials_user");
       sessionStorage.removeItem("auth_provider");
@@ -393,7 +513,7 @@ const Sidebar = () => {
       : []),
   ];
 
-  const studentNavItems = isStudent
+  const studentNavItems = !isAdmin
     ? [
         {
           href: "/resume/builder",
@@ -503,20 +623,153 @@ const Sidebar = () => {
         </button>
       </div>
 
-      {/* Search Input */}
-      <div className="px-4 pt-4 pb-2">
+      {/* Search Input Container */}
+      <div className="relative px-4 pt-4 pb-2" ref={searchContainerRef}>
         <div className="flex items-center bg-gray-50 hover:bg-gray-100/80 border border-gray-200/80 rounded-xl px-3 py-2 text-sm transition-all focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent focus-within:bg-white">
           <Search className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => {
+              if (searchQuery.trim()) setIsSearchOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleSearchSubmit();
+              } else if (e.key === "Escape") {
+                setIsSearchOpen(false);
+              }
+            }}
             placeholder={t("navbar.search", "Search opportunities...")}
             className="bg-transparent focus:outline-none w-full text-xs text-gray-900 placeholder-gray-400"
           />
+          {isSearching ? (
+            <Loader2 className="w-4 h-4 text-blue-600 animate-spin flex-shrink-0 ml-1" />
+          ) : searchQuery ? (
+            <button
+              type="button"
+              onClick={handleClearSearch}
+              className="text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-200/60 transition-colors ml-1"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          ) : null}
         </div>
+
+        {/* Floating Opportunities Search Dropdown */}
+        {isSearchOpen && (
+          <div className="absolute left-4 right-4 top-full mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-80 flex flex-col animate-in fade-in slide-in-from-top-1 duration-150">
+            {/* Dropdown Header */}
+            <div className="px-3 py-2 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between text-[11px] font-semibold text-gray-500">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-blue-600" />
+                Opportunities
+              </span>
+              {!isSearching && (
+                <span className="text-[10px] bg-gray-200/70 text-gray-600 px-1.5 py-0.5 rounded-full font-bold">
+                  {searchResults.length}
+                </span>
+              )}
+            </div>
+
+            {/* Results Area */}
+            <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
+              {isSearching ? (
+                <div className="py-6 flex flex-col items-center justify-center text-gray-400 gap-2">
+                  <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                  <span className="text-xs">Searching opportunities...</span>
+                </div>
+              ) : searchError ? (
+                <div className="py-5 px-3 text-center text-xs text-red-500">
+                  {searchError}
+                </div>
+              ) : searchResults.length === 0 ? (
+                <div className="py-6 px-4 text-center">
+                  <p className="text-xs font-medium text-gray-700">No opportunities found</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Try searching a different role, company, or skill</p>
+                </div>
+              ) : (
+                searchResults.map((item) => {
+                  const href = item.type === "internship"
+                    ? `/detailinternship/${item._id}`
+                    : `/detailjob/${item._id}`;
+                  return (
+                    <Link
+                      key={`${item.type}-${item._id}`}
+                      href={href}
+                      onClick={() => {
+                        setIsSearchOpen(false);
+                        setIsMobileOpen(false);
+                      }}
+                      className="p-2.5 hover:bg-blue-50/60 transition-colors flex flex-col gap-1 text-left group"
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <p className="text-xs font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                          {item.title}
+                        </p>
+                        <span
+                          className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                            item.type === "internship"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-purple-100 text-purple-700"
+                          }`}
+                        >
+                          {item.type}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                        <span className="truncate">{item.company}</span>
+                        {item.location && (
+                          <>
+                            <span className="text-gray-300">•</span>
+                            <span className="truncate">{item.location}</span>
+                          </>
+                        )}
+                      </div>
+                      {(item.stipend || item.CTC) && (
+                        <div className="text-[10px] font-semibold text-emerald-600">
+                          {item.type === "internship" ? `₹${item.stipend}/mo` : `CTC: ₹${item.CTC}`}
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })
+              )}
+            </div>
+
+            {/* View All Footer */}
+            {searchResults.length > 0 && (
+              <div className="p-2 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-2">
+                <Link
+                  href={`/internships?q=${encodeURIComponent(searchQuery.trim())}`}
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    setIsMobileOpen(false);
+                  }}
+                  className="flex-1 text-center py-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                >
+                  All Internships →
+                </Link>
+                <Link
+                  href={`/job?q=${encodeURIComponent(searchQuery.trim())}`}
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    setIsMobileOpen(false);
+                  }}
+                  className="flex-1 text-center py-1 text-[11px] font-semibold text-purple-600 hover:text-purple-700 hover:underline"
+                >
+                  All Jobs →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Navigation Links Area (Scrollable) */}
-      <nav className="flex-1 overflow-y-auto px-3.5 py-3 space-y-1">
+      {/* Navigation Links Area (Scrollable with min-h-0) */}
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3.5 py-3 space-y-1">
         {/* Main Section */}
         <div className="space-y-1">
           {commonNavItems.map(renderNavLink)}

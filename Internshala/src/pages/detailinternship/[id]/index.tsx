@@ -14,6 +14,7 @@ import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { toast } from "react-toastify";
+import { API_URL } from "@/config/api";
 // export const internships = [
 //   {
 //     _id: "1",
@@ -81,9 +82,9 @@ const index = () => {
       try {
         let res;
         try {
-          res = await axios.get(`https://elevance-skill.onrender.com/api/internship/${id}`);
+          res = await axios.get(`${API_URL}/internship/${id}`);
         } catch {
-          res = await axios.get(`https://internshala-clone-y2p2.onrender.com/api/internship/${id}`);
+          res = await axios.get(`https://elevance-skill.onrender.com/api/internship/${id}`);
         }
         setinternship(res.data);
       } catch (error) {
@@ -121,13 +122,9 @@ const index = () => {
         Application: id,
         availability
       }
-      const getBackendUrl = (): string => {
-        return process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-      };
       const urls = [
-        `${getBackendUrl()}/application`,
+        `${API_URL}/application`,
         "https://elevance-skill.onrender.com/api/application",
-        "https://internshala-clone-y2p2.onrender.com/api/application",
       ];
       for (const url of urls) {
         try {

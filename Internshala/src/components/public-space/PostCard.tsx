@@ -7,7 +7,7 @@ import { toast } from "react-toastify";
 import Link from "next/link";
 import CommentSection from "./CommentSection";
 
-const BACKEND_URL = "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 interface Post {
   _id: string;

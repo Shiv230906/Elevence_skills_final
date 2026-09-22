@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/router";
 import axios from "axios";
 import { toast } from "react-toastify";
+import { API_URL } from "@/config/api";
 
 const defaultState = {
   title: "",
@@ -67,9 +68,9 @@ const PostInternship = () => {
     try {
       setisloading(true);
       try {
-        await axios.post("https://elevance-skill.onrender.com/api/internship", formdata);
+        await axios.post(`${API_URL}/internship`, formdata);
       } catch {
-        await axios.post("https://internshala-clone-y2p2.onrender.com/api/internship", formdata);
+        await axios.post("https://elevance-skill.onrender.com/api/internship", formdata);
       }
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("postInternshipDraft");

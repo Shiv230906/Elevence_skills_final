@@ -9,7 +9,7 @@ import Link from "next/link";
 import Head from "next/head";
 import CommentSection from "@/components/public-space/CommentSection";
 
-const BACKEND_URL = "http://localhost:5000";
+import { BACKEND_URL } from "@/config/api";
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
