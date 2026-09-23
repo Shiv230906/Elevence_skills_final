@@ -967,7 +967,7 @@ router.post("/forgot-password/verify", async (req, res) => {
     const emailAddress = resetRecord.targetEmail || user.email;
     if (emailAddress) {
       const confirmSubject = "Your Elevance Password Has Been Reset — InternArea";
-      const confirmText = `Hello ${user.name || "User"},\n\nYour InternArea account password has been successfully reset.\n\nYour new password is: ${generatedPassword}\n\nImportant:\n- This password contains only uppercase and lowercase letters (no numbers or symbols).\n- Please log in and consider changing it to something you prefer.\n- If you did not request this reset, contact support immediately.\n\nLogin at: http://localhost:3000/adminlogin\n\nStay secure,\nInternArea Team`;
+      const confirmText = `Hello ${user.name || "User"},\n\nYour InternArea account password has been successfully reset.\n\nYour new password is: ${generatedPassword}\n\nImportant:\n- This password contains only uppercase and lowercase letters (no numbers or symbols).\n- Please log in and consider changing it to something you prefer.\n- If you did not request this reset, contact support immediately.\n\nLogin at: https://elevance-skills-final.vercel.app/login\n\nStay secure,\nInternArea Team`;
       const confirmHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
           <h2 style="color: #2563eb; margin-top: 0;">Password Reset Successful</h2>
@@ -1204,7 +1204,7 @@ router.post("/forgot-password/complete", async (req, res) => {
     const emailAddress = resetRecord.targetEmail || user.email;
     if (emailAddress) {
       const confirmSubject = "Your Elevance Password Has Been Reset — InternArea";
-      const confirmText = `Hello ${user.name || "User"},\n\nYour InternArea account password has been successfully reset.\n\nYour new password is: ${newPassword.trim()}\n\nImportant:\n- This password contains only uppercase and lowercase letters (no numbers or symbols).\n- Please log in and consider changing it to something you prefer.\n- If you did not request this reset, contact support immediately.\n\nLogin at: http://localhost:3000/login\n\nStay secure,\nInternArea Team`;
+      const confirmText = `Hello ${user.name || "User"},\n\nYour InternArea account password has been successfully reset.\n\nYour new password is: ${newPassword.trim()}\n\nImportant:\n- This password contains only uppercase and lowercase letters (no numbers or symbols).\n- Please log in and consider changing it to something you prefer.\n- If you did not request this reset, contact support immediately.\n\nLogin at: https://elevance-skills-final.vercel.app/login\n\nStay secure,\nInternArea Team`;
       const confirmHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
           <h2 style="color: #2563eb; margin-top: 0;">Password Reset Successful</h2>
