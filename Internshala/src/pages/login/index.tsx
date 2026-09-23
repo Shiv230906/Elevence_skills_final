@@ -67,10 +67,25 @@ export default function LoginPage() {
         }),
       });
 
-      const data = await response.json();
+      let data: any = null;
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        try {
+          data = await response.json();
+        } catch (_) {}
+      }
 
-      if (!response.ok || !data.success) {
-        const errorText = data.message || "Invalid email/username or password.";
+      if (!response.ok || !data || !data.success) {
+        let errorText = data?.message;
+        if (!errorText) {
+          if (response.status === 404) {
+            errorText = "Authentication endpoint not found on server (404). Please ensure the backend is redeployed with the latest updates.";
+          } else if (response.status >= 500) {
+            errorText = `Backend server error (${response.status}). The service may be starting up; please try again shortly.`;
+          } else {
+            errorText = "Invalid email/username or password.";
+          }
+        }
         setErrorMessage(errorText);
         toast.error(errorText);
         return;
@@ -99,7 +114,9 @@ export default function LoginPage() {
       router.push("/verify-otp");
     } catch (err: any) {
       console.error("Normal login error:", err);
-      const netMsg = "Unable to connect to login server. Please check your connection.";
+      const netMsg = err?.message?.includes("endpoint not found")
+        ? err.message
+        : "Unable to connect to login server. Please check your connection.";
       setErrorMessage(netMsg);
       toast.error(netMsg);
     } finally {
@@ -212,7 +229,13 @@ export default function LoginPage() {
         }),
       });
 
-      const checkData = await checkRes.json();
+      let checkData: any = {};
+      const ct = checkRes.headers.get("content-type");
+      if (ct && ct.includes("application/json")) {
+        try {
+          checkData = await checkRes.json();
+        } catch (_) {}
+      }
 
       if (checkData.blocked && checkData.reason === "mobile_time_restriction") {
         toast.error(
