@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
 
-const { sendFastEmail } = require("../utils/mailer");
+const { sendFastEmail, sendOTPEmail } = require("../utils/mailer");
 
 let otpStore = {};
 
@@ -29,12 +29,15 @@ router.post("/send", async (req, res) => {
       expiresAt: Date.now() + 5 * 60 * 1000,
     };
 
-    const subject = req.body.subject || "Resume Generation Verification OTP";
-    const text = req.body.text || `Your OTP for Premium Resume Generation is ${otp}. This OTP is valid for 5 minutes.`;
-
     console.log(`\n========================================\n[OTP SERVICE] Generated OTP for ${email}: ${otp}\n========================================\n`);
 
-    sendFastEmail({ to: email, subject, text });
+    if (req.body.subject || req.body.text) {
+      const subject = req.body.subject || "Resume Generation Verification OTP";
+      const text = req.body.text || `Your OTP for Premium Resume Generation is ${otp}. This OTP is valid for 5 minutes.`;
+      sendFastEmail({ to: email, subject, text });
+    } else {
+      sendOTPEmail(email, otp, "resume");
+    }
 
     res.json({
       success: true,

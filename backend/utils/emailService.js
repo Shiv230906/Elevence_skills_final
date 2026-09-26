@@ -1,8 +1,17 @@
-const nodemailer = require("nodemailer");
+﻿const { sendFastEmail } = require("./mailer");
 const { getFormattedIST } = require("./timeHelper");
 
 /**
- * Sends a subscription invoice email to the subscriber
+ * emailService.js — Subscription invoice emails via Resend
+ *
+ * Previously used Nodemailer directly; now delegates to the shared
+ * sendFastEmail helper (mailer.js) which uses Resend under the hood.
+ * This avoids duplicate email-provider configuration and inherits the
+ * same RESEND_API_KEY / RESEND_FROM_EMAIL environment variables.
+ */
+
+/**
+ * Sends a subscription invoice email to the subscriber.
  */
 async function sendSubscriptionInvoiceEmail({
   toEmail,
@@ -15,12 +24,12 @@ async function sendSubscriptionInvoiceEmail({
   maxApplications = 1,
   validUntil = null,
 }) {
-  const invoiceRef = invoiceNumber || `INV-${Date.now()}`;
+  const invoiceRef = invoiceNumber || ("INV-" + Date.now());
   const currentDateIST = getFormattedIST(new Date());
   const validityText = validUntil ? getFormattedIST(validUntil) : "1 Month from Purchase";
-  const quotaText = maxApplications === -1 ? "Unlimited Applications" : `${maxApplications} Applications / month`;
+  const quotaText = maxApplications === -1 ? "Unlimited Applications" : (maxApplications + " Applications / month");
 
-  const emailSubject = `Subscription Invoice - ${plan} Plan [${invoiceRef}] | InternArea`;
+  const emailSubject = "Subscription Invoice - " + plan + " Plan [" + invoiceRef + "] | InternArea";
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -48,7 +57,7 @@ async function sendSubscriptionInvoiceEmail({
       <body>
         <div class="container">
           <div class="header">
-            <h1>Payment Receipt & Invoice</h1>
+            <h1>Payment Receipt &amp; Invoice</h1>
             <p>Thank you for subscribing to InternArea!</p>
           </div>
           <div class="content">
@@ -87,7 +96,7 @@ async function sendSubscriptionInvoiceEmail({
                 </tr>
                 <tr class="amount-row">
                   <td class="label">Total Amount Paid:</td>
-                  <td class="value">₹${amount}</td>
+                  <td class="value">Rs. ${amount}</td>
                 </tr>
               </table>
             </div>
@@ -97,7 +106,7 @@ async function sendSubscriptionInvoiceEmail({
             </p>
           </div>
           <div class="footer">
-            <p>© ${new Date().getFullYear()} InternArea. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} InternArea. All rights reserved.</p>
             <p>This is an automated invoice confirmation sent to ${toEmail}.</p>
           </div>
         </div>
@@ -105,58 +114,49 @@ async function sendSubscriptionInvoiceEmail({
     </html>
   `;
 
-  const textContent = `
-INVOICE - INTERNAREA SUBSCRIPTION
-========================================
-Invoice Reference: ${invoiceRef}
-Date: ${currentDateIST}
-Subscriber: ${userName || toEmail} (${toEmail})
+  const textContent = [
+    "INVOICE - INTERNAREA SUBSCRIPTION",
+    "========================================",
+    "Invoice Reference: " + invoiceRef,
+    "Date: " + currentDateIST,
+    "Subscriber: " + (userName || toEmail) + " (" + toEmail + ")",
+    "",
+    "Subscription Plan: " + plan,
+    "Total Amount Paid: Rs. " + amount,
+    "Application Quota: " + quotaText,
+    "Payment ID: " + paymentId,
+    "Order ID: " + orderId,
+    "Validity: " + validityText,
+    "========================================",
+    "Thank you for your business!",
+  ].join("\n");
 
-Subscription Plan: ${plan}
-Total Amount Paid: ₹${amount}
-Application Quota: ${quotaText}
-Payment ID: ${paymentId}
-Order ID: ${orderId}
-Validity: ${validityText}
-========================================
-Thank you for your business!
-  `.trim();
+  console.log("\n========================================");
+  console.log("[INVOICE EMAIL SERVICE] Generating Invoice for: " + toEmail);
+  console.log("Plan: " + plan + " | Amount: Rs. " + amount + " | Invoice: " + invoiceRef);
+  console.log("========================================\n");
 
-  console.log(`\n========================================`);
-  console.log(`[INVOICE EMAIL SERVICE] Generating Invoice for: ${toEmail}`);
-  console.log(`Plan: ${plan} | Amount: ₹${amount} | Invoice: ${invoiceRef}`);
-  console.log(`========================================\n`);
+  try {
+    const result = await sendFastEmail({
+      to: toEmail,
+      subject: emailSubject,
+      text: textContent,
+      html: htmlContent,
+    });
 
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
-      const info = await transporter.sendMail({
-        from: `"InternArea Subscriptions" <${process.env.EMAIL_USER}>`,
-        to: toEmail,
-        subject: emailSubject,
-        text: textContent,
-        html: htmlContent,
-      });
-
-      console.log(`[INVOICE EMAIL SERVICE] Invoice sent successfully: ${info.messageId}`);
-      return { success: true, messageId: info.messageId, invoiceRef };
-    } catch (mailError) {
-      console.error("[INVOICE EMAIL SERVICE] Nodemailer sending error:", mailError);
-      return { success: false, error: mailError.message, invoiceRef };
+    if (result.success) {
+      console.log("[INVOICE EMAIL SERVICE] Invoice sent successfully: " + result.messageId);
+      return { success: true, messageId: result.messageId, invoiceRef: invoiceRef };
+    } else if (result.devMode) {
+      console.warn("[INVOICE EMAIL SERVICE] RESEND_API_KEY not set — email logged to console (dev mode).");
+      return { success: true, devMode: true, invoiceRef: invoiceRef };
+    } else {
+      console.error("[INVOICE EMAIL SERVICE] Failed to send invoice email:", result.error);
+      return { success: false, error: result.error, invoiceRef: invoiceRef };
     }
-  } else {
-    console.warn("[INVOICE EMAIL SERVICE] EMAIL_USER or EMAIL_PASS not set in .env. Email logged to console.");
-    return { success: true, devMode: true, invoiceRef };
+  } catch (err) {
+    console.error("[INVOICE EMAIL SERVICE] Unexpected error:", err.message);
+    return { success: false, error: err.message, invoiceRef: invoiceRef };
   }
 }
 

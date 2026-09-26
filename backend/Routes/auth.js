@@ -1,8 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const axios = require("axios");
-const nodemailer = require("nodemailer");
-// otp-generator removed — using crypto.randomInt for OTP generation (see generateNumericOtp below)
+// otp-generator removed â€” using crypto.randomInt for OTP generation (see generateNumericOtp below)
 const { detectDeviceInfo } = require("../utils/deviceDetector");
 const { isMobileLoginTimeAllowed, getFormattedIST } = require("../utils/timeHelper");
 const LoginHistory = require("../Model/LoginHistory");
@@ -14,7 +13,7 @@ const Resume = require("../Model/Resume");
 const PasswordReset = require("../Model/PasswordReset");
 const { generateAlphaPassword } = require("../utils/passwordGenerator");
 
-const { sendFastEmail } = require("../utils/mailer");
+const { sendFastEmail, sendOTPEmail } = require("../utils/mailer");
 
 /**
  * Generates a 6-digit numeric OTP using cryptographically secure random.
@@ -55,17 +54,14 @@ async function updateLoginHistory(id, update) {
 }
 
 /**
- * Helper: send OTP email using fast pooled mailer
+ * Helper: send OTP email using Resend email service
  */
 function sendLoginOtpEmail(email, otp) {
-  const subject = "Login Security OTP — InternArea";
-  const text = `Your login verification OTP is: ${otp}\n\nThis OTP is valid for 5 minutes.\n\nIf you did not attempt to log in, please ignore this email.`;
-
   console.log(`\n========================================`);
-  console.log(`[AUTH OTP] Generated login OTP for ${email}: ${otp}`);
+  console.log(`[AUTH OTP] Dispatching login OTP for ${email}: ${otp}`);
   console.log(`========================================\n`);
 
-  sendFastEmail({ to: email, subject, text });
+  return sendOTPEmail(email, otp, "login");
 }
 
 /**
@@ -284,7 +280,7 @@ router.post("/login-check", async (req, res) => {
 
   console.log(`\n[AUTH] Login check for ${userEmail} | Browser: ${browser} | Device: ${deviceType} | IP: ${ipAddress} | isChrome: ${isChrome} | isMobile: ${isMobile} | loginType: ${loginType}`);
 
-  // ── RULE 1: Mobile time restriction ──────────────────────────────────────
+  // â”€â”€ RULE 1: Mobile time restriction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (isMobile) {
     const allowed = isMobileLoginTimeAllowed();
     if (!allowed) {
@@ -299,7 +295,7 @@ router.post("/login-check", async (req, res) => {
         reason: "mobile_time_restriction",
       });
 
-      console.warn(`[AUTH] Mobile login BLOCKED for ${userEmail} — outside 10 AM–1 PM IST`);
+      console.warn(`[AUTH] Mobile login BLOCKED for ${userEmail} â€” outside 10 AMâ€“1 PM IST`);
       return res.status(403).json({
         blocked: true,
         reason: "mobile_time_restriction",
@@ -312,7 +308,7 @@ router.post("/login-check", async (req, res) => {
 
   const isGoogle = loginType === "google" || isGoogleLogin === true;
 
-  // ── RULE 2: OTP verification for Google login (or Chrome fallback) ─────────
+  // â”€â”€ RULE 2: OTP verification for Google login (or Chrome fallback) â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (isGoogle || (isChrome && !isMobile)) {
     const otp = generateNumericOtp();
 
@@ -346,7 +342,7 @@ router.post("/login-check", async (req, res) => {
     });
   }
 
-  // ── RULE 3: Normal login (email/password or non-Google) — allow immediately ──
+  // â”€â”€ RULE 3: Normal login (email/password or non-Google) â€” allow immediately â”€â”€
   const historyRecord = await saveLoginHistory({
     firebaseUid,
     userEmail,
@@ -615,12 +611,12 @@ router.get("/login-history/:firebaseUid", async (req, res) => {
     return res.json({ success: true, history });
   } catch (err) {
     console.error("[AUTH] Error fetching login history:", err.message);
-    // Graceful fallback — return empty array so profile page doesn't crash
+    // Graceful fallback â€” return empty array so profile page doesn't crash
     return res.json({ success: true, history: [] });
   }
 });
 
-// ── FORGOT PASSWORD FEATURE HELPERS & ROUTES ─────────────────────────────
+// â”€â”€ FORGOT PASSWORD FEATURE HELPERS & ROUTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Checks if two dates fall on the same calendar day in Indian Standard Time (IST, UTC+5:30)
@@ -660,7 +656,7 @@ function maskPhone(phone) {
  * Sends Password Reset OTP via Nodemailer
  */
 async function sendForgotPasswordOtpEmail(email, otp) {
-  const subject = "Password Reset Verification OTP — InternArea";
+  const subject = "Password Reset Verification OTP â€” InternArea";
   const text = `Your password reset verification OTP is: ${otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you did not request a password reset, please secure your account immediately.`;
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
@@ -966,7 +962,7 @@ router.post("/forgot-password/verify", async (req, res) => {
     // Send reset confirmation email with the new password
     const emailAddress = resetRecord.targetEmail || user.email;
     if (emailAddress) {
-      const confirmSubject = "Your Elevance Password Has Been Reset — InternArea";
+      const confirmSubject = "Your Elevance Password Has Been Reset â€” InternArea";
       const confirmText = `Hello ${user.name || "User"},\n\nYour InternArea account password has been successfully reset.\n\nYour new password is: ${generatedPassword}\n\nImportant:\n- This password contains only uppercase and lowercase letters (no numbers or symbols).\n- Please log in and consider changing it to something you prefer.\n- If you did not request this reset, contact support immediately.\n\nLogin at: https://elevance-skills-final.vercel.app/login\n\nStay secure,\nInternArea Team`;
       const confirmHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
@@ -979,7 +975,7 @@ router.post("/forgot-password/verify", async (req, res) => {
           </div>
           <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 13px; color: #92400e;">
             <strong>&#9888; Security Notice:</strong><br/>
-            This password contains only uppercase and lowercase letters (A–Z, a–z) &mdash; no numbers or special characters.<br/>
+            This password contains only uppercase and lowercase letters (Aâ€“Z, aâ€“z) &mdash; no numbers or special characters.<br/>
             After logging in, we recommend updating it to a password of your choice.
           </div>
           <p style="color: #374151; line-height: 1.6;">If you did not request a password reset, please secure your account immediately.</p>
@@ -1203,7 +1199,7 @@ router.post("/forgot-password/complete", async (req, res) => {
     // Send confirmation email
     const emailAddress = resetRecord.targetEmail || user.email;
     if (emailAddress) {
-      const confirmSubject = "Your Elevance Password Has Been Reset — InternArea";
+      const confirmSubject = "Your Elevance Password Has Been Reset â€” InternArea";
       const confirmText = `Hello ${user.name || "User"},\n\nYour InternArea account password has been successfully reset.\n\nYour new password is: ${newPassword.trim()}\n\nImportant:\n- This password contains only uppercase and lowercase letters (no numbers or symbols).\n- Please log in and consider changing it to something you prefer.\n- If you did not request this reset, contact support immediately.\n\nLogin at: https://elevance-skills-final.vercel.app/login\n\nStay secure,\nInternArea Team`;
       const confirmHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
@@ -1216,7 +1212,7 @@ router.post("/forgot-password/complete", async (req, res) => {
           </div>
           <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 13px; color: #92400e;">
             <strong>&#9888; Security Notice:</strong><br/>
-            This password contains only uppercase and lowercase letters (A–Z, a–z) &mdash; no numbers or special characters.<br/>
+            This password contains only uppercase and lowercase letters (Aâ€“Z, aâ€“z) &mdash; no numbers or special characters.<br/>
             After logging in, you can update it to a password of your choice.
           </div>
           <p style="color: #374151; line-height: 1.6;">If you did not request a password reset, please secure your account immediately.</p>
@@ -1279,5 +1275,6 @@ router.post("/resend-login-otp", async (req, res) => {
 });
 
 module.exports = router;
+
 
 
