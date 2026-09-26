@@ -1,11 +1,16 @@
 const express = require("express");
 const router = express.Router();
-const nodemailer = require("nodemailer");
-const otpGenerator = require("otp-generator");
+const crypto = require("crypto");
 
 const { sendFastEmail } = require("../utils/mailer");
 
 let otpStore = {};
+
+// Generate a 6-digit numeric OTP using cryptographically secure random
+function generateNumericOtp() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+}
+
 
 router.post("/send", async (req, res) => {
   try {
@@ -17,11 +22,7 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    const otp = otpGenerator.generate(6, {
-      upperCaseAlphabets: false,
-      specialChars: false,
-      lowerCaseAlphabets: false,
-    });
+    const otp = generateNumericOtp();
 
     otpStore[email] = {
       otp,

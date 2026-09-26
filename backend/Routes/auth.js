@@ -1239,5 +1239,45 @@ router.post("/forgot-password/complete", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/auth/resend-login-otp
+ * Resends the login verification OTP for both credentials and Google login flows.
+ * Body: { userEmail, loginType?, firebaseUid? }
+ *
+ * Unlike /login-check, this endpoint ALWAYS generates and sends a new OTP
+ * regardless of browser type. It is only called from the verify-otp page
+ * after the user has already passed credential/Google authentication.
+ */
+router.post("/resend-login-otp", async (req, res) => {
+  const { userEmail, loginType, firebaseUid } = req.body;
+
+  if (!userEmail) {
+    return res.status(400).json({ success: false, message: "userEmail is required." });
+  }
+
+  // Generate a fresh 6-digit OTP
+  const otp = generateNumericOtp();
+
+  loginOtpStore[userEmail] = {
+    otp,
+    expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+    firebaseUid: firebaseUid || loginOtpStore[userEmail]?.firebaseUid || "",
+  };
+
+  // Send via email
+  sendLoginOtpEmail(userEmail, otp);
+
+  console.log(`[AUTH OTP RESEND] New OTP generated for ${userEmail} (loginType: ${loginType || "unknown"})`);
+
+  return res.json({
+    success: true,
+    requiresOtp: true,
+    message: "A new verification OTP has been sent to your registered email.",
+    // Expose devOtp in non-production for easy local testing
+    ...(process.env.NODE_ENV !== "production" ? { devOtp: otp } : {}),
+  });
+});
+
 module.exports = router;
+
 

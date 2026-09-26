@@ -216,22 +216,21 @@ export default function VerifyOtpPage() {
     setErrorMessage("");
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/login-check`, {
+      const response = await fetch(`${BACKEND_URL}/api/auth/resend-login-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          firebaseUid: uid || "pending",
           userEmail: email,
           loginType: pendingUser?.loginType || "credentials",
-          isGoogleLogin: pendingUser?.loginType === "google",
+          firebaseUid: uid || "pending",
         }),
       });
 
       const data = await response.json();
 
-      if (response.ok && (data.requiresOtp || data.allowed)) {
+      if (response.ok && data.requiresOtp) {
         toast.success("A new verification OTP has been sent to your email.");
         setTimer(300);
         setOtp("");
@@ -245,6 +244,7 @@ export default function VerifyOtpPage() {
       setIsResending(false);
     }
   };
+
 
   // Cancel Login
   const handleCancel = async () => {
