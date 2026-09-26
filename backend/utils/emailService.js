@@ -1,13 +1,12 @@
-﻿const { sendFastEmail } = require("./mailer");
+const { sendFastEmail } = require("./mailer");
 const { getFormattedIST } = require("./timeHelper");
 
 /**
- * emailService.js — Subscription invoice emails via Resend
+ * emailService.js — Subscription invoice emails via Brevo
  *
- * Previously used Nodemailer directly; now delegates to the shared
- * sendFastEmail helper (mailer.js) which uses Resend under the hood.
+ * Delegates to the shared sendFastEmail helper (mailer.js) which uses Brevo.
  * This avoids duplicate email-provider configuration and inherits the
- * same RESEND_API_KEY / RESEND_FROM_EMAIL environment variables.
+ * same BREVO_API_KEY / BREVO_SENDER_EMAIL environment variables.
  */
 
 /**
@@ -148,7 +147,7 @@ async function sendSubscriptionInvoiceEmail({
       console.log("[INVOICE EMAIL SERVICE] Invoice sent successfully: " + result.messageId);
       return { success: true, messageId: result.messageId, invoiceRef: invoiceRef };
     } else if (result.devMode) {
-      console.warn("[INVOICE EMAIL SERVICE] RESEND_API_KEY not set — email logged to console (dev mode).");
+      console.warn("[INVOICE EMAIL SERVICE] BREVO_API_KEY not set — email logged to console (dev mode).");
       return { success: true, devMode: true, invoiceRef: invoiceRef };
     } else {
       console.error("[INVOICE EMAIL SERVICE] Failed to send invoice email:", result.error);

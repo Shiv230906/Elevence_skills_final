@@ -1,106 +1,114 @@
-const { Resend } = require("resend");
+const { BrevoClient } = require("@getbrevo/brevo");
 
 /**
- * mailer.js — Email delivery via Resend HTTPS API
+ * mailer.js — Transactional Email Delivery via Brevo API
  *
- * Replaces direct Gmail SMTP / Nodemailer delivery.
- * Render blocks outbound SMTP connections on ports 25, 465, and 587 on its
- * hosting platform, causing "connect ETIMEDOUT ... :465".
- * Resend sends via standard HTTPS (port 443), which is never blocked on Render,
- * Vercel, or any other cloud environment.
+ * Replaces direct SMTP and Resend delivery.
+ * Brevo sends emails over HTTPS API (port 443), eliminating any port 465/587
+ * timeout issues on Render.
  *
- * Required environment variable:
- *   RESEND_API_KEY — Your Resend API key (https://resend.com/api-keys)
+ * Unlike Resend (which restricts unverified domains to account-owner-only in testing),
+ * Brevo allows sending to any recipient once your sender email is verified in Brevo.
  *
- * Optional environment variable:
- *   RESEND_FROM_EMAIL — Verified sender (e.g., "InternArea <noreply@yourdomain.com>")
- *                       Defaults to "InternArea <onboarding@resend.dev>" for testing.
+ * Required environment variables:
+ *   BREVO_API_KEY      — Brevo v3 API key (e.g., xkeysib-...) from Brevo Dashboard -> SMTP & API
+ *   BREVO_SENDER_EMAIL — Sender email address verified in your Brevo account (e.g., your verified email)
+ *
+ * Optional environment variables:
+ *   BREVO_SENDER_NAME  — Sender name (defaults to "InternArea")
  */
 
-let resendClient = null;
+let brevoClient = null;
 
-function getResendClient() {
-  if (resendClient) return resendClient;
+function getBrevoClient() {
+  if (brevoClient) return brevoClient;
 
-  const apiKey = (process.env.RESEND_API_KEY || "").trim();
-  // Ensure non-empty and not a placeholder
-  if (!apiKey || apiKey === "re_your_api_key_here" || apiKey.startsWith("re_your_")) {
+  const apiKey = (process.env.BREVO_API_KEY || "").trim();
+  // Ensure non-empty and not a dummy placeholder
+  if (!apiKey || apiKey === "your_brevo_api_key_here" || apiKey.startsWith("your_")) {
     return null;
   }
 
-  resendClient = new Resend(apiKey);
-  return resendClient;
+  brevoClient = new BrevoClient({ apiKey });
+  return brevoClient;
 }
 
 /**
- * Returns the configured sender address.
- * Uses RESEND_FROM_EMAIL if set, otherwise falls back to Resend's onboarding sandbox address.
+ * Returns the configured Brevo sender object { name, email }.
  */
-function getFromAddress() {
-  return (
-    process.env.RESEND_FROM_EMAIL ||
-    "InternArea <onboarding@resend.dev>"
-  );
+function getSender() {
+  const senderEmail = (process.env.BREVO_SENDER_EMAIL || "").trim();
+  const senderName = (process.env.BREVO_SENDER_NAME || "InternArea").trim();
+
+  return {
+    email: senderEmail || "noreply@internarea.com",
+    name: senderName || "InternArea",
+  };
 }
 
 /**
- * Fast, reliable email dispatcher using the Resend HTTPS API.
+ * Fast, reliable email dispatcher using Brevo's HTTPS Transactional Email API.
  * Never blocks the main thread with slow TCP socket handshakes.
  *
  * @param {{ to: string, subject: string, text?: string, html?: string }} options
  * @returns {Promise<{ success: boolean, messageId?: string, devMode?: boolean, error?: string }>}
  */
-function sendFastEmail({ to, subject, text, html }) {
+async function sendFastEmail({ to, subject, text, html }) {
   const cleanRecipient = typeof to === "string" ? to.trim() : to;
 
   console.log("\n========================================");
-  console.log("[EMAIL SERVICE] Dispatching email to: " + cleanRecipient);
-  console.log("[EMAIL SERVICE] Subject: " + subject);
-  console.log("[EMAIL SERVICE] Snippet: " + (text ? text.slice(0, 80) : "HTML content") + "...");
+  console.log("[BREVO EMAIL SERVICE] Dispatching email to: " + cleanRecipient);
+  console.log("[BREVO EMAIL SERVICE] Subject: " + subject);
+  console.log("[BREVO EMAIL SERVICE] Snippet: " + (text ? text.slice(0, 80) : "HTML content") + "...");
   console.log("========================================\n");
 
-  const client = getResendClient();
+  const client = getBrevoClient();
 
   if (!client) {
     console.warn(
-      "[EMAIL SERVICE] RESEND_API_KEY is not configured or is placeholder. Email logged to console (dev mode)."
+      "[BREVO EMAIL SERVICE] BREVO_API_KEY is not configured or is placeholder. Email logged to console (dev mode)."
     );
-    return Promise.resolve({ success: true, devMode: true });
+    return { success: true, devMode: true };
   }
 
-  const from = getFromAddress();
+  const sender = getSender();
 
-  return client.emails
-    .send({
-      from,
-      to: cleanRecipient,
+  if (!process.env.BREVO_SENDER_EMAIL) {
+    console.warn(
+      "[BREVO EMAIL SERVICE] Warning: BREVO_SENDER_EMAIL is not set. Using default sender: " + sender.email
+    );
+  }
+
+  try {
+    const response = await client.transactionalEmails.sendTransacEmail({
+      sender: {
+        name: sender.name,
+        email: sender.email,
+      },
+      to: [
+        {
+          email: cleanRecipient,
+        },
+      ],
       subject,
-      ...(html ? { html } : {}),
-      ...(text ? { text } : {}),
-    })
-    .then((response) => {
-      if (response.error) {
-        // Resend returned an API error (e.g. invalid key, unverified domain, etc.)
-        console.error(
-          "[EMAIL SERVICE] Resend API error delivering to " + cleanRecipient + ":",
-          response.error.message || response.error
-        );
-        return { success: false, error: response.error.message || "Email delivery failed" };
-      }
-
-      const messageId = response.data && response.data.id;
-      console.log(
-        "[EMAIL SERVICE] Delivered successfully to " + cleanRecipient + " (Resend ID: " + messageId + ")"
-      );
-      return { success: true, messageId };
-    })
-    .catch((err) => {
-      console.error(
-        "[EMAIL SERVICE] Delivery request failed to " + cleanRecipient + ":",
-        err.message
-      );
-      return { success: false, error: "Network error during email dispatch" };
+      ...(html ? { htmlContent: html } : {}),
+      ...(text ? { textContent: text } : {}),
     });
+
+    const messageId = response?.messageId || (response?.messageIds && response.messageIds[0]) || "brevo-sent";
+    console.log(
+      "[BREVO EMAIL SERVICE] Delivered successfully to " + cleanRecipient + " (Message ID: " + messageId + ")"
+    );
+    return { success: true, messageId };
+  } catch (err) {
+    const errorDetails = err?.body?.message || err?.message || "Brevo delivery error";
+    console.error(
+      "[BREVO EMAIL SERVICE] Delivery failed to " + cleanRecipient + ":",
+      errorDetails
+    );
+    // Never expose API keys or internal stack trace to the caller
+    return { success: false, error: "Email delivery failed" };
+  }
 }
 
 /**
@@ -109,9 +117,9 @@ function sendFastEmail({ to, subject, text, html }) {
  *
  * Contains:
  * - 6-digit OTP code prominently displayed
- * - Purpose / login verification context
  * - Expiration time (5 minutes)
- * - Security warning message
+ * - Two-Step Login Verification message
+ * - InternArea branding
  *
  * @param {string} email - Recipient email address
  * @param {string} otp - 6-digit numeric OTP code
