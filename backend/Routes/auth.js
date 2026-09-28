@@ -54,7 +54,7 @@ async function updateLoginHistory(id, update) {
 }
 
 /**
- * Helper: send OTP email using Resend email service
+ * Helper: send OTP email using Nodemailer + Gmail SMTP (via mailer.js)
  */
 function sendLoginOtpEmail(email, otp) {
   console.log(`\n========================================`);

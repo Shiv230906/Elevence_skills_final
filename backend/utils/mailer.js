@@ -1,54 +1,72 @@
-const { BrevoClient } = require("@getbrevo/brevo");
+const nodemailer = require("nodemailer");
 
 /**
- * mailer.js — Transactional Email Delivery via Brevo API
+ * mailer.js — Transactional Email Delivery via Nodemailer + Gmail SMTP
  *
- * Replaces direct SMTP and Resend delivery.
- * Brevo sends emails over HTTPS API (port 443), eliminating any port 465/587
- * timeout issues on Render.
+ * Uses Gmail SMTP with STARTTLS on port 587.
+ * All credentials are read from environment variables — never hardcoded.
  *
- * Unlike Resend (which restricts unverified domains to account-owner-only in testing),
- * Brevo allows sending to any recipient once your sender email is verified in Brevo.
+ * Required environment variables (set in Render dashboard or .env):
+ *   SMTP_HOST   — smtp.gmail.com
+ *   SMTP_PORT   — 587
+ *   SMTP_SECURE — false  (STARTTLS; use true only for port 465)
+ *   SMTP_USER   — your Gmail address
+ *   SMTP_PASS   — your Gmail App Password (16-char, no spaces)
+ *   SMTP_FROM   — sender address shown to recipient (same as SMTP_USER)
  *
- * Required environment variables:
- *   BREVO_API_KEY      — Brevo v3 API key (e.g., xkeysib-...) from Brevo Dashboard -> SMTP & API
- *   BREVO_SENDER_EMAIL — Sender email address verified in your Brevo account (e.g., your verified email)
- *
- * Optional environment variables:
- *   BREVO_SENDER_NAME  — Sender name (defaults to "InternArea")
+ * Credentials are NEVER logged or exposed to clients.
  */
 
-let brevoClient = null;
+let _transporter = null;
 
-function getBrevoClient() {
-  if (brevoClient) return brevoClient;
+/**
+ * Returns a cached Nodemailer transporter, or null if SMTP env vars are missing.
+ */
+function getTransporter() {
+  if (_transporter) return _transporter;
 
-  const apiKey = (process.env.BREVO_API_KEY || "").trim();
-  // Ensure non-empty and not a dummy placeholder
-  if (!apiKey || apiKey === "your_brevo_api_key_here" || apiKey.startsWith("your_")) {
+  const host = (process.env.SMTP_HOST || "").trim();
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+  const secure = (process.env.SMTP_SECURE || "false").trim().toLowerCase() === "true";
+  const user = (process.env.SMTP_USER || "").trim();
+  const pass = (process.env.SMTP_PASS || "").trim();
+
+  // Guard: require all critical SMTP env vars to be set and non-placeholder
+  if (!host || !user || !pass || pass === "your_gmail_app_password_here") {
     return null;
   }
 
-  brevoClient = new BrevoClient({ apiKey });
-  return brevoClient;
+  _transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,          // false = STARTTLS (upgrades plain → TLS after EHLO on port 587)
+    auth: {
+      user,
+      pass,          // Gmail App Password — never logged
+    },
+    // Prevents hanging on Render (no localhost dependency, cloud-safe timeouts)
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
+
+  return _transporter;
 }
 
 /**
- * Returns the configured Brevo sender object { name, email }.
+ * Returns the "From" address for outgoing mail.
+ * Uses SMTP_FROM if set, falls back to SMTP_USER.
  */
-function getSender() {
-  const senderEmail = (process.env.BREVO_SENDER_EMAIL || "").trim();
-  const senderName = (process.env.BREVO_SENDER_NAME || "InternArea").trim();
-
-  return {
-    email: senderEmail || "noreply@internarea.com",
-    name: senderName || "InternArea",
-  };
+function getSenderAddress() {
+  const fromEnv = (process.env.SMTP_FROM || "").trim();
+  const userEnv = (process.env.SMTP_USER || "").trim();
+  const address = fromEnv || userEnv || "noreply@internarea.com";
+  return `"InternArea" <${address}>`;
 }
 
 /**
- * Fast, reliable email dispatcher using Brevo's HTTPS Transactional Email API.
- * Never blocks the main thread with slow TCP socket handshakes.
+ * Core email dispatcher using Nodemailer + Gmail SMTP.
+ * Falls back to dev-mode console logging when SMTP vars are not configured.
  *
  * @param {{ to: string, subject: string, text?: string, html?: string }} options
  * @returns {Promise<{ success: boolean, messageId?: string, devMode?: boolean, error?: string }>}
@@ -57,73 +75,61 @@ async function sendFastEmail({ to, subject, text, html }) {
   const cleanRecipient = typeof to === "string" ? to.trim() : to;
 
   console.log("\n========================================");
-  console.log("[BREVO EMAIL SERVICE] Dispatching email to: " + cleanRecipient);
-  console.log("[BREVO EMAIL SERVICE] Subject: " + subject);
-  console.log("[BREVO EMAIL SERVICE] Snippet: " + (text ? text.slice(0, 80) : "HTML content") + "...");
+  console.log("[SMTP EMAIL] Dispatching email to: " + cleanRecipient);
+  console.log("[SMTP EMAIL] Subject: " + subject);
+  console.log("[SMTP EMAIL] Snippet: " + (text ? text.slice(0, 80) : "HTML content") + "...");
   console.log("========================================\n");
 
-  const client = getBrevoClient();
+  const transporter = getTransporter();
 
-  if (!client) {
+  if (!transporter) {
+    // Dev mode: SMTP not configured — log to console so development still works
     console.warn(
-      "[BREVO EMAIL SERVICE] BREVO_API_KEY is not configured or is placeholder. Email logged to console (dev mode)."
+      "[SMTP EMAIL] SMTP credentials are not fully configured. Email logged to console (dev mode).\n" +
+      "[SMTP EMAIL] To enable real delivery, set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM."
     );
+    console.log("[SMTP EMAIL DEV] Would have sent to:", cleanRecipient);
+    console.log("[SMTP EMAIL DEV] Subject:", subject);
+    console.log("[SMTP EMAIL DEV] Body (text):\n", text || "(HTML only)");
     return { success: true, devMode: true };
   }
 
-  const sender = getSender();
-
-  if (!process.env.BREVO_SENDER_EMAIL) {
-    console.warn(
-      "[BREVO EMAIL SERVICE] Warning: BREVO_SENDER_EMAIL is not set. Using default sender: " + sender.email
-    );
-  }
-
   try {
-    const response = await client.transactionalEmails.sendTransacEmail({
-      sender: {
-        name: sender.name,
-        email: sender.email,
-      },
-      to: [
-        {
-          email: cleanRecipient,
-        },
-      ],
+    const info = await transporter.sendMail({
+      from: getSenderAddress(),
+      to: cleanRecipient,
       subject,
-      ...(html ? { htmlContent: html } : {}),
-      ...(text ? { textContent: text } : {}),
+      ...(text ? { text } : {}),
+      ...(html ? { html } : {}),
     });
 
-    const messageId = response?.messageId || (response?.messageIds && response.messageIds[0]) || "brevo-sent";
     console.log(
-      "[BREVO EMAIL SERVICE] Delivered successfully to " + cleanRecipient + " (Message ID: " + messageId + ")"
+      "[SMTP EMAIL] Delivered successfully to " + cleanRecipient + " (Message ID: " + info.messageId + ")"
     );
-    return { success: true, messageId };
+    return { success: true, messageId: info.messageId };
   } catch (err) {
-    const errorDetails = err?.body?.message || err?.message || "Brevo delivery error";
+    // Log a useful error message — NEVER log SMTP_PASS or auth credentials
     console.error(
-      "[BREVO EMAIL SERVICE] Delivery failed to " + cleanRecipient + ":",
-      errorDetails
+      "[SMTP EMAIL] Delivery FAILED to " + cleanRecipient + ": " + err.message
     );
-    // Never expose API keys or internal stack trace to the caller
-    return { success: false, error: "Email delivery failed" };
+    // Return a safe, non-sensitive error to the caller — never expose SMTP creds
+    return { success: false, error: "Email delivery failed. Check server logs." };
   }
 }
 
 /**
  * Standardized OTP email delivery interface.
- * Exposes sendOTPEmail(email, otp, purpose) preserving full backward compatibility.
+ * Preserves the sendOTPEmail(email, otp, purpose) signature for full backward compatibility.
  *
- * Contains:
- * - 6-digit OTP code prominently displayed
- * - Expiration time (5 minutes)
- * - Two-Step Login Verification message
+ * The email contains:
  * - InternArea branding
+ * - 6-digit OTP prominently displayed
+ * - Expiration message (5 or 10 minutes depending on purpose)
+ * - Security warning not to share the OTP
  *
- * @param {string} email - Recipient email address
- * @param {string} otp - 6-digit numeric OTP code
- * @param {string} [purpose="login"] - Context of the verification ("login", "password_reset", "resume")
+ * @param {string} email       - Recipient email address
+ * @param {string} otp         - 6-digit numeric OTP code
+ * @param {string} [purpose]   - "login" | "password_reset" | "resume"
  * @returns {Promise<{ success: boolean, messageId?: string, devMode?: boolean, error?: string }>}
  */
 function sendOTPEmail(email, otp, purpose = "login") {
@@ -219,9 +225,6 @@ function sendOTPEmail(email, otp, purpose = "login") {
 module.exports = {
   sendFastEmail,
   sendOTPEmail,
-  sendLoginOtpEmail: sendOTPEmail,
-  // Stub for backward compatibility
-  getTransporter: function () {
-    return null;
-  },
+  sendLoginOtpEmail: sendOTPEmail, // backward-compat alias
+  getTransporter,                  // exposes transporter for diagnostics/testing
 };
