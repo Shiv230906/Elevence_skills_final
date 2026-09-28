@@ -55,6 +55,19 @@ const Sidebar = () => {
   const isStudent = !isAdmin && Boolean(user);
   const isGuest = !isAdmin && !user;
 
+  // Suppress Sidebar login buttons on dedicated auth pages.
+  // When the user is on /login or /register, those pages have their own
+  // Google Sign-In button. Rendering a second signInWithPopup trigger in the
+  // Sidebar (which is mounted on every page) causes Firebase to cancel the
+  // first popup with auth/cancelled-popup-request → ERR_CONNECTION_CLOSED.
+  const isOnAuthPage = [
+    "/login",
+    "/register",
+    "/verify-otp",
+    "/adminlogin",
+    "/forgot-password",
+  ].includes(router.pathname);
+
   // ── Opportunities Search State ─────────────────────────────────────────────
   interface SearchResultItem {
     _id: string;
@@ -843,8 +856,8 @@ const Sidebar = () => {
         </div>
 
         {/* Auth Section */}
-        {/* 1. GUEST */}
-        {isGuest && (
+        {/* 1. GUEST — hidden on auth pages to prevent double signInWithPopup */}
+        {isGuest && !isOnAuthPage && (
           <div className="space-y-2">
             <Link
               href="/login"
@@ -976,7 +989,7 @@ const Sidebar = () => {
               />
             </Link>
           )}
-          {isGuest && (
+          {isGuest && !isOnAuthPage && (
             <button
               type="button"
               onClick={handlelogin}

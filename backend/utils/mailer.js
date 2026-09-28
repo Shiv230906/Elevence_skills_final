@@ -3,7 +3,11 @@ const nodemailer = require("nodemailer");
 /**
  * mailer.js — Transactional Email Delivery via Nodemailer + Gmail SMTP
  *
- * Uses Gmail SMTP with STARTTLS on port 587.
+ * Uses Gmail SMTP with STARTTLS on port 587, forced to IPv4 (family: 4).
+ * Render's default DNS resolution can return an IPv6 address for smtp.gmail.com
+ * which causes ENETUNREACH on port 587. Setting family: 4 pins the TCP socket
+ * to IPv4 and avoids that failure.
+ *
  * All credentials are read from environment variables — never hardcoded.
  *
  * Required environment variables (set in Render dashboard or .env):
@@ -40,17 +44,63 @@ function getTransporter() {
     host,
     port,
     secure,          // false = STARTTLS (upgrades plain → TLS after EHLO on port 587)
+    family: 4,       // Force IPv4 — prevents ENETUNREACH on Render where DNS may resolve
+                     // smtp.gmail.com to an IPv6 address that is unreachable on port 587
     auth: {
       user,
       pass,          // Gmail App Password — never logged
     },
-    // Prevents hanging on Render (no localhost dependency, cloud-safe timeouts)
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    // Cloud-safe timeouts — prevents indefinite hangs on Render
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   });
 
   return _transporter;
+}
+
+/**
+ * Runs transporter.verify() at server startup and logs a clear READY / FAILED
+ * message to Render logs so connectivity problems are visible immediately,
+ * without needing to trigger a real email send.
+ *
+ * Call this once from index.js after the server starts.
+ * Never throws — failures are logged and swallowed so they don't crash the server.
+ */
+async function verifyTransporter() {
+  const transporter = getTransporter();
+
+  if (!transporter) {
+    console.warn(
+      "[SMTP VERIFY] Skipped — SMTP credentials are not configured (dev mode)."
+    );
+    return;
+  }
+
+  console.log(
+    "[SMTP VERIFY] Testing SMTP connection to " +
+    (process.env.SMTP_HOST || "smtp.gmail.com") + ":" +
+    (process.env.SMTP_PORT || "587") + " (IPv4 forced)..."
+  );
+
+  try {
+    await transporter.verify();
+    console.log(
+      "[SMTP VERIFY] ✅ SMTP connection READY — Gmail SMTP is reachable and credentials are accepted."
+    );
+  } catch (err) {
+    // Log the diagnostic error but NEVER log SMTP_PASS
+    console.error(
+      "[SMTP VERIFY] ❌ SMTP connection FAILED: " + err.message
+    );
+    console.error(
+      "[SMTP VERIFY] Check: (1) SMTP_USER / SMTP_PASS are correct on Render, " +
+      "(2) Gmail App Password is enabled (not your regular Gmail password), " +
+      "(3) Render allows outbound TCP on port 587."
+    );
+    // Reset cached transporter so the next send attempt rebuilds it
+    _transporter = null;
+  }
 }
 
 /**
@@ -227,4 +277,5 @@ module.exports = {
   sendOTPEmail,
   sendLoginOtpEmail: sendOTPEmail, // backward-compat alias
   getTransporter,                  // exposes transporter for diagnostics/testing
+  verifyTransporter,               // call once at startup for a clear SMTP connectivity log
 };

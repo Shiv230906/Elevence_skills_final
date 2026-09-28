@@ -5,6 +5,7 @@ const app = express();
 const cors = require("cors");
 const { connect } = require("./db");
 const router = require("./Routes/index");
+const { verifyTransporter } = require("./utils/mailer");
 const port = process.env.PORT || 5000;
 const path = require("path");
 
@@ -82,4 +83,6 @@ app.listen(port, () => {
   console.log(`Server is running on the port ${port}`);
   console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`Health check: http://localhost:${port}/health`);
+  // Verify SMTP connectivity at startup — result appears in Render logs
+  verifyTransporter();
 });
