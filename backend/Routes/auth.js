@@ -170,7 +170,9 @@ router.post("/validate-login", async (req, res) => {
     }
 
     const deviceInfo = detectDeviceInfo(req);
-    const { browser, os, deviceType, isMobile, ipAddress } = deviceInfo;
+    const { browser, os, deviceType, isMobile, isChrome, ipAddress } = deviceInfo;
+
+    console.log(`[VALIDATE LOGIN] User: ${user.email} | Browser: ${browser} | Device: ${deviceType} | isChrome: ${isChrome} | isMobile: ${isMobile} | IP: ${ipAddress}`);
 
     if (!passwordMatches) {
       await saveLoginHistory({
@@ -216,16 +218,44 @@ router.post("/validate-login", async (req, res) => {
       }
     }
 
-    // 4. Generate 6-digit login OTP
-    const otp = generateNumericOtp();
-    loginOtpStore[user.email] = {
-      otp,
-      expiresAt: Date.now() + 5 * 60 * 1000,
-      firebaseUid: user.firebaseUid || "",
-    };
+    // 4. Chrome → require OTP; non-Chrome → allow immediately
+    if (isChrome) {
+      // Chrome users must verify via email OTP before gaining access
+      const otp = generateNumericOtp();
+      loginOtpStore[user.email] = {
+        otp,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+        firebaseUid: user.firebaseUid || "",
+      };
 
-    sendLoginOtpEmail(user.email, otp);
+      sendLoginOtpEmail(user.email, otp);
 
+      const historyRecord = await saveLoginHistory({
+        firebaseUid: user.firebaseUid || "pending",
+        userEmail: user.email,
+        browser,
+        os,
+        deviceType,
+        ipAddress,
+        status: "otp_pending",
+        reason: "chrome_otp_required",
+      });
+
+      console.log(`[VALIDATE LOGIN] Chrome detected — OTP dispatched for ${user.email}`);
+
+      return res.json({
+        success: true,
+        requiresOtp: true,
+        message: "For security, Chrome login requires email OTP verification. OTP sent to your registered email.",
+        email: user.email,
+        name: user.name || "User",
+        firebaseUid: user.firebaseUid || "",
+        historyId: historyRecord?._id?.toString() || null,
+        ...(process.env.NODE_ENV !== "production" ? { devOtp: otp } : {}),
+      });
+    }
+
+    // Non-Chrome browser — allow login immediately without OTP
     const historyRecord = await saveLoginHistory({
       firebaseUid: user.firebaseUid || "pending",
       userEmail: user.email,
@@ -233,19 +263,29 @@ router.post("/validate-login", async (req, res) => {
       os,
       deviceType,
       ipAddress,
-      status: "otp_pending",
-      reason: "normal_login_otp_required",
+      status: "success",
+      reason: "non_chrome_direct_login",
     });
+
+    // Update lastLoginAt
+    try {
+      user.lastLoginAt = new Date();
+      await user.save();
+    } catch (dbErr) {
+      console.warn("[VALIDATE LOGIN] Could not update lastLoginAt:", dbErr.message);
+    }
+
+    console.log(`[VALIDATE LOGIN] Non-Chrome (${browser}) — direct access granted for ${user.email}`);
 
     return res.json({
       success: true,
-      requiresOtp: true,
-      message: "OTP sent to your registered email for login verification.",
+      allowed: true,
+      requiresOtp: false,
+      message: "Login successful.",
       email: user.email,
       name: user.name || "User",
       firebaseUid: user.firebaseUid || "",
       historyId: historyRecord?._id?.toString() || null,
-      ...(process.env.NODE_ENV !== "production" ? { devOtp: otp } : {}),
     });
   } catch (error) {
     console.error("[VALIDATE LOGIN] Error:", error);

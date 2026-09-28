@@ -57,7 +57,7 @@ export default function LoginPage() {
         }
       } catch (_) {}
 
-      // Validate credentials against backend
+      // Validate credentials against backend — backend detects browser/device server-side
       const response = await fetch(`${BACKEND_URL}/api/auth/validate-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,6 +75,15 @@ export default function LoginPage() {
         } catch (_) {}
       }
 
+      // ── CASE 1: Mobile time restriction blocked (403 + blocked flag) ──────
+      if (response.status === 403 && data?.blocked && data?.reason === "mobile_time_restriction") {
+        const msg = data.message || "Mobile login is allowed only between 10:00 AM and 1:00 PM IST.";
+        setErrorMessage(msg);
+        toast.error(msg, { autoClose: 6000 });
+        return;
+      }
+
+      // ── CASE 2: Generic error (wrong credentials, server error, etc.) ────
       if (!response.ok || !data || !data.success) {
         let errorText = data?.message;
         if (!errorText) {
@@ -91,27 +100,68 @@ export default function LoginPage() {
         return;
       }
 
-      // Credentials are valid! OTP has been dispatched to user's registered email
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("auth_provider", "credentials");
-        sessionStorage.removeItem(`otp_verified_${data.firebaseUid}`);
-        const pendingData: PendingUser = {
-          uid: data.firebaseUid,
-          email: data.email,
-          name: data.name || "User",
-          photo: "",
-          historyId: data.historyId || null,
-          loginType: "credentials",
-          identifier: cleanIdentifier,
-        };
-        sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
+      // ── CASE 3: Chrome browser — OTP required ─────────────────────────────
+      if (data.requiresOtp) {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("auth_provider", "credentials");
+          sessionStorage.removeItem(`otp_verified_${data.firebaseUid}`);
+          const pendingData: PendingUser = {
+            uid: data.firebaseUid,
+            email: data.email,
+            name: data.name || "User",
+            photo: "",
+            historyId: data.historyId || null,
+            loginType: "credentials",
+            identifier: cleanIdentifier,
+          };
+          sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
+        }
+
+        // Ensure user is NOT in Redux yet (OTP required)
+        dispatch(logout());
+
+        toast.info(data.message || "For security, Chrome login requires email OTP verification. OTP sent to your registered email.");
+        router.push("/verify-otp");
+        return;
       }
 
-      // Ensure user is NOT in Redux yet (OTP required)
-      dispatch(logout());
+      // ── CASE 4: Non-Chrome browser — immediate access granted ─────────────
+      if (data.allowed) {
+        if (typeof window !== "undefined") {
+          // Mark as OTP-verified (non-Chrome skips OTP entirely)
+          localStorage.setItem(`otp_verified_${data.firebaseUid}`, "true");
+          sessionStorage.setItem(`otp_verified_${data.firebaseUid}`, "true");
 
-      toast.info(data.message || "Verification OTP sent to your registered email.");
-      router.push("/verify-otp");
+          const credsString = JSON.stringify({
+            uid: data.firebaseUid,
+            name: data.name || "User",
+            email: data.email,
+            photo: "",
+          });
+          localStorage.setItem("credentials_user", credsString);
+          sessionStorage.setItem("credentials_user", credsString);
+
+          // Clear any stale pending OTP state
+          sessionStorage.removeItem("pending_otp_login");
+          sessionStorage.removeItem("auth_provider");
+        }
+
+        dispatch(login({
+          uid: data.firebaseUid,
+          name: data.name || "User",
+          email: data.email,
+          photo: "",
+        }));
+
+        toast.success("Login successful! Welcome back.");
+        router.replace("/");
+        return;
+      }
+
+      // Unexpected response shape — treat as error
+      const fallbackMsg = data?.message || "Login could not be completed. Please try again.";
+      setErrorMessage(fallbackMsg);
+      toast.error(fallbackMsg);
     } catch (err: any) {
       console.error("Normal login error:", err);
       const netMsg = err?.message?.includes("endpoint not found")
@@ -123,6 +173,7 @@ export default function LoginPage() {
       setIsLoading(false);
     }
   };
+
 
   // ── Continue with Google ───────────────────────────────────────────────────
   const handleGoogleLogin = async () => {

@@ -29,9 +29,15 @@ function getFormattedIST(date = new Date()) {
 }
 
 /**
- * Checks if current IST time is between 10:00 AM and 1:00 PM IST (inclusive)
- * 10:00 AM = 10 * 60 = 600 minutes
- * 1:00 PM = 13 * 60 = 780 minutes
+ * Checks if current IST time is within the allowed mobile login window.
+ *
+ * Allowed: 10:00 AM IST (inclusive) through 12:59:59 IST (i.e., < 1:00 PM)
+ *   10:00 AM = 10 * 60 = 600 minutes
+ *   1:00 PM  = 13 * 60 = 780 minutes  ← must be BLOCKED at exactly 1:00 PM
+ *
+ * Rule: totalMinutes >= 600 AND totalMinutes < 780
+ *   At 12:59 → totalMinutes = 779 → ALLOWED
+ *   At 13:00 → totalMinutes = 780 → BLOCKED
  */
 function isMobileLoginTimeAllowed() {
   const ist = getISTDate();
@@ -39,8 +45,8 @@ function isMobileLoginTimeAllowed() {
   const minutes = ist.getMinutes();
   const totalMinutes = hours * 60 + minutes;
 
-  // 10:00 AM (600) to 1:00 PM (780)
-  return totalMinutes >= 600 && totalMinutes <= 780;
+  // >= 10:00 AM (600) AND < 1:00 PM (780) — strictly less than 780
+  return totalMinutes >= 600 && totalMinutes < 780;
 }
 
 /**
