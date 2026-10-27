@@ -40,28 +40,7 @@ export default function VerifyOtpPage() {
   // (pending_otp_login key set by handlelogin in Sidebar.tsx right after
   // the Google popup succeeds). Any other visit to this page is redirected.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const stored = sessionStorage.getItem("pending_otp_login");
-    if (stored) {
-      try {
-        const parsed: PendingUser = JSON.parse(stored);
-        // If OTP was already verified for this UID, go home
-        if (parsed.uid && sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true") {
-          router.replace("/");
-          return;
-        }
-        setPendingUser(parsed);
-      } catch (e) {
-        console.error("Failed to parse pending login:", e);
-        // Corrupted data — send to home
-        router.replace("/");
-      }
-    } else {
-      // No active login attempt → do NOT show OTP page.
-      // Redirect to home whether or not a Firebase user is signed in.
-      router.replace("/");
-    }
+    router.replace("/");
   }, [router]);
 
 

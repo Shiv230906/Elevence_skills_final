@@ -218,44 +218,7 @@ router.post("/validate-login", async (req, res) => {
       }
     }
 
-    // 4. Chrome → require OTP; non-Chrome → allow immediately
-    if (isChrome) {
-      // Chrome users must verify via email OTP before gaining access
-      const otp = generateNumericOtp();
-      loginOtpStore[user.email] = {
-        otp,
-        expiresAt: Date.now() + 5 * 60 * 1000,
-        firebaseUid: user.firebaseUid || "",
-      };
-
-      sendLoginOtpEmail(user.email, otp);
-
-      const historyRecord = await saveLoginHistory({
-        firebaseUid: user.firebaseUid || "pending",
-        userEmail: user.email,
-        browser,
-        os,
-        deviceType,
-        ipAddress,
-        status: "otp_pending",
-        reason: "chrome_otp_required",
-      });
-
-      console.log(`[VALIDATE LOGIN] Chrome detected — OTP dispatched for ${user.email}`);
-
-      return res.json({
-        success: true,
-        requiresOtp: true,
-        message: "For security, Chrome login requires email OTP verification. OTP sent to your registered email.",
-        email: user.email,
-        name: user.name || "User",
-        firebaseUid: user.firebaseUid || "",
-        historyId: historyRecord?._id?.toString() || null,
-        ...(process.env.NODE_ENV !== "production" ? { devOtp: otp } : {}),
-      });
-    }
-
-    // Non-Chrome browser — allow login immediately without OTP
+    // 4. Log in immediately without OTP
     const historyRecord = await saveLoginHistory({
       firebaseUid: user.firebaseUid || "pending",
       userEmail: user.email,
@@ -264,7 +227,7 @@ router.post("/validate-login", async (req, res) => {
       deviceType,
       ipAddress,
       status: "success",
-      reason: "non_chrome_direct_login",
+      reason: "direct_login",
     });
 
     // Update lastLoginAt
@@ -275,7 +238,7 @@ router.post("/validate-login", async (req, res) => {
       console.warn("[VALIDATE LOGIN] Could not update lastLoginAt:", dbErr.message);
     }
 
-    console.log(`[VALIDATE LOGIN] Non-Chrome (${browser}) — direct access granted for ${user.email}`);
+    console.log(`[VALIDATE LOGIN] Direct login access granted for ${user.email}`);
 
     return res.json({
       success: true,
@@ -348,41 +311,7 @@ router.post("/login-check", async (req, res) => {
 
   const isGoogle = loginType === "google" || isGoogleLogin === true;
 
-  // â”€â”€ RULE 2: OTP verification for Google login (or Chrome fallback) â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  if (isGoogle || (isChrome && !isMobile)) {
-    const otp = generateNumericOtp();
-
-    loginOtpStore[userEmail] = {
-      otp,
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
-      firebaseUid,
-    };
-
-    // Send OTP email
-    sendLoginOtpEmail(userEmail, otp);
-
-    // Record as otp_pending in history
-    const historyRecord = await saveLoginHistory({
-      firebaseUid,
-      userEmail,
-      browser,
-      os,
-      deviceType,
-      ipAddress,
-      status: "otp_pending",
-      reason: isGoogle ? "google_login_otp_required" : "chrome_otp_required",
-    });
-
-    return res.json({
-      requiresOtp: true,
-      message: "OTP sent to your registered email for login verification.",
-      historyId: historyRecord?._id?.toString() || null,
-      // Expose devOtp in non-production for easy local testing
-      ...(process.env.NODE_ENV !== "production" ? { devOtp: otp } : {}),
-    });
-  }
-
-  // â”€â”€ RULE 3: Normal login (email/password or non-Google) â€” allow immediately â”€â”€
+  // Direct login allowed — no OTP required
   const historyRecord = await saveLoginHistory({
     firebaseUid,
     userEmail,
@@ -391,7 +320,7 @@ router.post("/login-check", async (req, res) => {
     deviceType,
     ipAddress,
     status: "success",
-    reason: "",
+    reason: isGoogle ? "google_direct_login" : "direct_login",
   });
 
   return res.json({

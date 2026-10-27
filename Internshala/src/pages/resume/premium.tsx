@@ -20,7 +20,6 @@ import {
   Crown,
   CreditCard,
 } from "lucide-react";
-import OtpVerificationModal from "@/components/OtpVerificationModal";
 
 const ResumePremiumPage: React.FC = () => {
   const user = useSelector(selectuser);
@@ -28,8 +27,6 @@ const ResumePremiumPage: React.FC = () => {
 
   const [loadingStatus, setLoadingStatus] = useState<boolean>(true);
   const [isPremium, setIsPremium] = useState<boolean>(false);
-  const [showOtpModal, setShowOtpModal] = useState<boolean>(false);
-  const [isVerified, setIsVerified] = useState<boolean>(false);
   const [processingPayment, setProcessingPayment] = useState<boolean>(false);
 
   const getFirebaseUid = (): string => {
@@ -116,18 +113,7 @@ const ResumePremiumPage: React.FC = () => {
       // ignore draft creation errors
     }
 
-    if (!isVerified) {
-      setShowOtpModal(true);
-    } else {
-      handleInitiatePayment();
-    }
-  };
-
-  // Step 2: OTP Verification Success Callback
-  const handleOtpSuccess = () => {
-    setIsVerified(true);
-    setShowOtpModal(false);
-    toast.success("Email identity verified! Opening Razorpay payment...");
+    // Direct payment without OTP verification
     handleInitiatePayment();
   };
 
@@ -356,7 +342,7 @@ const ResumePremiumPage: React.FC = () => {
             <div className="p-4 bg-slate-900/60 rounded-2xl border border-slate-700/60 flex items-center justify-between text-xs text-slate-300">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Verified Email Identity via OTP</span>
+                <span>Verified Direct Checkout</span>
               </div>
               <div className="flex items-center gap-2">
                 <Lock className="w-4 h-4 text-blue-400" />
@@ -437,13 +423,6 @@ const ResumePremiumPage: React.FC = () => {
         </div>
       </div>
 
-      {/* OTP Verification Modal */}
-      <OtpVerificationModal
-        isOpen={showOtpModal}
-        email={userEmail}
-        onClose={() => setShowOtpModal(false)}
-        onSuccess={handleOtpSuccess}
-      />
     </div>
   );
 };

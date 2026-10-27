@@ -28,7 +28,7 @@ const AuthListener = () => {
       dispatch(adminLogin());
     }
 
-    const unsubscribe = auth.onAuthStateChanged((authuser) => {
+    const unsubscribe = auth.onAuthStateChanged((authuser: any) => {
       const adminActive =
         typeof window !== "undefined" && localStorage.getItem("adminSession") === "true";
       if (adminActive) {
@@ -37,62 +37,26 @@ const AuthListener = () => {
       }
 
       if (authuser) {
-        const uid = authuser.uid;
-        const isOtpVerified =
-          typeof window !== "undefined" &&
-          (localStorage.getItem(`otp_verified_${uid}`) === "true" ||
-            sessionStorage.getItem(`otp_verified_${uid}`) === "true");
-
-        if (isOtpVerified) {
-          // OTP verified → allow Redux login
-          dispatch(
-            login({
-              uid: authuser.uid || "",
-              photo: authuser.photoURL || "",
-              name: authuser.displayName || "",
-              email: authuser.email || "",
-            })
-          );
-          if (router.pathname === "/verify-otp") {
-            router.replace("/");
-          }
-          return;
-        }
-
-        // OTP not verified yet
-        const hasPendingOtp =
-          typeof window !== "undefined" &&
-          Boolean(sessionStorage.getItem("pending_otp_login"));
-
-        if (hasPendingOtp) {
-          // Active login attempt in progress → keep logged out in Redux
-          dispatch(logout());
-
-          const publicRoutes = ["/login", "/register", "/verify-otp", "/adminlogin", "/forgot-password"];
-          if (!publicRoutes.includes(router.pathname)) {
-            router.replace("/verify-otp");
-          }
-          return;
-        }
-
-        // Stale session without active login attempt and without OTP verification
-        // Treat as guest — do not show OTP on startup or refresh
-        dispatch(logout());
+        // Firebase user present — log in immediately, no OTP required
+        dispatch(
+          login({
+            uid: authuser.uid || "",
+            photo: authuser.photoURL || "",
+            name: authuser.displayName || "",
+            email: authuser.email || "",
+          })
+        );
         return;
       } else {
-        // No Firebase user. Check if credentials user is already OTP-verified in storage
+        // No Firebase user. Check for stored credentials user
         if (typeof window !== "undefined") {
           const creds =
             localStorage.getItem("credentials_user") ||
-            sessionStorage.getItem("credentials_user") ||
-            sessionStorage.getItem("pending_otp_login");
+            sessionStorage.getItem("credentials_user");
           if (creds) {
             try {
               const parsed: PendingUser = JSON.parse(creds);
-              const isOtpVerified =
-                localStorage.getItem(`otp_verified_${parsed.uid}`) === "true" ||
-                sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true";
-              if (isOtpVerified) {
+              if (parsed.uid) {
                 dispatch(
                   login({
                     uid: parsed.uid || "",
@@ -101,9 +65,6 @@ const AuthListener = () => {
                     email: parsed.email || "",
                   })
                 );
-                if (router.pathname === "/verify-otp") {
-                  router.replace("/");
-                }
                 return;
               }
             } catch (_) {}
@@ -115,30 +76,6 @@ const AuthListener = () => {
 
     return () => unsubscribe();
   }, [dispatch]);
-
-  // Route guard: enforce /verify-otp ONLY when an active login attempt is pending
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const pending = sessionStorage.getItem("pending_otp_login");
-    if (!pending) return;
-
-    try {
-      const parsed: PendingUser = JSON.parse(pending);
-      if (
-        parsed.uid &&
-        (localStorage.getItem(`otp_verified_${parsed.uid}`) === "true" ||
-          sessionStorage.getItem(`otp_verified_${parsed.uid}`) === "true")
-      ) {
-        return;
-      }
-    } catch (_) {}
-
-    const publicRoutes = ["/login", "/register", "/verify-otp", "/adminlogin", "/forgot-password"];
-    if (!publicRoutes.includes(router.pathname)) {
-      router.replace("/verify-otp");
-    }
-  }, [router.pathname]);
 
   return null;
 };

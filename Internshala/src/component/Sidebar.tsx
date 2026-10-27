@@ -199,35 +199,6 @@ const Sidebar = () => {
   const isLoggingInRef = useRef(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // ── Chrome OTP Modal State ─────────────────────────────────────────────────
-  const [showChromeOtpModal, setShowChromeOtpModal] = useState(false);
-  const [chromeOtpValue, setChromeOtpValue] = useState("");
-  const [chromeOtpLoading, setChromeOtpLoading] = useState(false);
-  const [chromeOtpSent, setChromeOtpSent] = useState(false);
-  const pendingLoginRef = useRef<{ firebaseUid: string; userEmail: string; historyId: string | null } | null>(null);
-
-  // ── Language OTP Modal State ───────────────────────────────────────────────
-  const [showOtpModal, setShowOtpModal] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState("");
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpLoading, setOtpLoading] = useState(false);
-
-  // ── Abort Chrome Login ─────────────────────────────────────────────────────
-  const abortChromeLogin = async () => {
-    try {
-      await signOut(auth);
-    } catch (_) {}
-    pendingLoginRef.current = null;
-    setChromeOtpValue("");
-    setChromeOtpSent(false);
-    setChromeOtpLoading(false);
-    setShowChromeOtpModal(false);
-    isLoggingInRef.current = false;
-    setIsLoggingIn(false);
-  };
-
   // ── Main Login Handler ─────────────────────────────────────────────────────
   const handlelogin = async (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (e) {
@@ -311,45 +282,10 @@ const Sidebar = () => {
 
     if (typeof window !== "undefined") {
       sessionStorage.setItem("auth_provider", "google");
-      sessionStorage.removeItem(`otp_verified_${firebaseUser.uid}`);
-      const pendingData: PendingUser = {
-        uid: firebaseUser.uid,
-        email: firebaseUser.email || "",
-        name: firebaseUser.displayName || "User",
-        photo: firebaseUser.photoURL || "",
-        historyId: null,
-        loginType: "google",
-      };
-      sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
     }
 
     try {
-      const checkRes = await fetch(`${BACKEND_URL}/api/auth/login-check`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firebaseUid: firebaseUser.uid,
-          userEmail: firebaseUser.email,
-          loginType: "google",
-          isGoogleLogin: true,
-        }),
-      });
-      const checkData = await checkRes.json();
-
-      if (checkData.blocked && checkData.reason === "mobile_time_restriction") {
-        toast.error(t("loginSecurity.mobileTimeRestriction"), { autoClose: 6000 });
-        await signOut(auth);
-        if (typeof window !== "undefined") {
-          sessionStorage.removeItem("pending_otp_login");
-          sessionStorage.removeItem("credentials_user");
-          sessionStorage.removeItem("auth_provider");
-        }
-        isLoggingInRef.current = false;
-        setIsLoggingIn(false);
-        return;
-      }
-
-      // Sync Google user profile to MongoDB User database immediately
+      // Sync Google user profile to MongoDB User database
       fetch(`${BACKEND_URL}/api/users/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -361,86 +297,33 @@ const Sidebar = () => {
         }),
       }).catch((err) => console.warn("[Sidebar Auth] User DB sync notice:", err));
 
-      if (typeof window !== "undefined") {
-        const pendingData: PendingUser = {
+      // Log in immediately — no OTP required
+      dispatch(
+        login({
           uid: firebaseUser.uid,
+          name: firebaseUser.displayName || "",
           email: firebaseUser.email || "",
-          name: firebaseUser.displayName || "User",
           photo: firebaseUser.photoURL || "",
-          historyId: checkData.historyId || null,
-          loginType: "google",
-        };
-        sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
-      }
-
-      dispatch(logout());
-      toast.info(t("loginSecurity.otpSent") || "Verification OTP sent to your registered email.");
+        })
+      );
+      toast.success("Logged in successfully");
       isLoggingInRef.current = false;
       setIsLoggingIn(false);
-      router.push("/verify-otp");
       return;
     } catch (backendErr) {
-      console.warn("[Auth] Backend security check error, proceeding to OTP page:", backendErr);
-      dispatch(logout());
-      toast.info("Proceeding to OTP verification.");
+      console.warn("[Auth] Backend sync error, logging in anyway:", backendErr);
+      dispatch(
+        login({
+          uid: firebaseUser.uid,
+          name: firebaseUser.displayName || "",
+          email: firebaseUser.email || "",
+          photo: firebaseUser.photoURL || "",
+        })
+      );
+      toast.success("Logged in successfully");
       isLoggingInRef.current = false;
       setIsLoggingIn(false);
-      router.push("/verify-otp");
       return;
-    }
-  };
-
-  // ── Chrome OTP Verify Handler ──────────────────────────────────────────────
-  const handleChromeOtpVerify = async () => {
-    if (!chromeOtpValue.trim()) {
-      toast.error(t("otp.enterOtpError"));
-      return;
-    }
-    if (!pendingLoginRef.current) {
-      toast.error("Session expired. Please login again.");
-      await abortChromeLogin();
-      return;
-    }
-
-    setChromeOtpLoading(true);
-    try {
-      const verifyRes = await fetch(`${BACKEND_URL}/api/auth/verify-login-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firebaseUid: pendingLoginRef.current.firebaseUid,
-          userEmail: pendingLoginRef.current.userEmail,
-          otp: chromeOtpValue.trim(),
-          historyId: pendingLoginRef.current.historyId,
-        }),
-      });
-      const verifyData = await verifyRes.json();
-
-      if (verifyData.allowed) {
-        const fbUser = auth.currentUser;
-        dispatch(
-          login({
-            uid: pendingLoginRef.current.firebaseUid,
-            name: fbUser?.displayName || "",
-            email: pendingLoginRef.current.userEmail,
-            photo: fbUser?.photoURL || "",
-          })
-        );
-        toast.success("Logged in successfully");
-        pendingLoginRef.current = null;
-        setChromeOtpValue("");
-        setChromeOtpSent(false);
-        setShowChromeOtpModal(false);
-        isLoggingInRef.current = false;
-        setIsLoggingIn(false);
-      } else {
-        toast.error(verifyData.message || t("loginSecurity.invalidOtp"));
-      }
-    } catch (err) {
-      console.error("OTP verify error:", err);
-      toast.error("Unable to verify OTP. Please try again.");
-    } finally {
-      setChromeOtpLoading(false);
     }
   };
 
@@ -467,9 +350,7 @@ const Sidebar = () => {
 
   // ── Language Change Flow ───────────────────────────────────────────────────
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = e.target.value;
-    setSelectedLanguage(selected);
-    setShowOtpModal(true);
+    i18n.changeLanguage(e.target.value);
   };
 
   // ── Helper: Check Active Route ─────────────────────────────────────────────
@@ -1022,188 +903,6 @@ const Sidebar = () => {
       >
         {sidebarContent}
       </aside>
-
-      {/* ── CHROME OTP MODAL (Preserved exactly as original) ─────────────── */}
-      {showChromeOtpModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-7 w-full max-w-[26rem] shadow-2xl border border-gray-100">
-            <div className="flex items-center mb-4 space-x-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">{t("loginSecurity.chromeOtpTitle")}</h2>
-                <p className="text-xs text-blue-600 font-medium">Chrome Security Verification</p>
-              </div>
-            </div>
-
-            <p className="text-sm text-gray-600 mb-5">
-              {t("loginSecurity.chromeOtpDesc")}
-            </p>
-
-            {pendingLoginRef.current?.userEmail && (
-              <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-4 text-sm text-blue-800 font-medium truncate">
-                📧 {pendingLoginRef.current.userEmail}
-              </div>
-            )}
-
-            <input
-              type="text"
-              placeholder="Enter 6-digit OTP"
-              value={chromeOtpValue}
-              onChange={(e) => setChromeOtpValue(e.target.value)}
-              maxLength={6}
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 mb-4 text-black text-center text-xl tracking-widest font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleChromeOtpVerify();
-              }}
-            />
-
-            <button
-              onClick={handleChromeOtpVerify}
-              disabled={chromeOtpLoading || !chromeOtpValue.trim()}
-              className={`w-full py-3 rounded-xl font-semibold text-white transition-all mb-3 ${
-                chromeOtpLoading || !chromeOtpValue.trim()
-                  ? "bg-blue-300 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700 active:scale-95"
-              }`}
-            >
-              {chromeOtpLoading ? t("loginSecurity.verifying") : t("otp.verify")}
-            </button>
-
-            <button
-              onClick={abortChromeLogin}
-              disabled={chromeOtpLoading}
-              className="w-full py-2.5 text-sm text-gray-500 hover:text-red-500 transition-colors rounded-xl hover:bg-red-50"
-            >
-              {t("loginSecurity.cancelLogin")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── LANGUAGE CHANGE OTP MODAL (Preserved exactly as original) ─────── */}
-      {showOtpModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">
-              {t("otp.title")}
-            </h2>
-
-            <p className="text-sm text-gray-600 mb-4">
-              {t("otp.description")}
-            </p>
-
-            <input
-              type="email"
-              placeholder={t("otp.email")}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 mb-3 text-black"
-            />
-
-            {!otpSent ? (
-              <button
-                onClick={async () => {
-                  if (!email) {
-                    toast.error(t("otp.enterEmail"));
-                    return;
-                  }
-
-                  setOtpLoading(true);
-
-                  try {
-                    const response = await fetch(`${BACKEND_URL}/api/otp/send`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ email }),
-                    });
-
-                    const data = await response.json();
-
-                    if (data.success) {
-                      setOtpSent(true);
-                      toast.success(t("otp.sent"));
-                    } else {
-                      toast.error(data.message || "Failed to send OTP");
-                    }
-                  } catch (error) {
-                    console.error(error);
-                    toast.error("Unable to connect to backend");
-                  } finally {
-                    setOtpLoading(false);
-                  }
-                }}
-                className="w-full bg-blue-600 text-white rounded-lg py-2 font-medium hover:bg-blue-700 transition-colors"
-              >
-                {otpLoading ? t("otp.sending") : t("otp.send")}
-              </button>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  placeholder={t("otp.enterOtp")}
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 mb-3 text-black font-mono tracking-wider"
-                />
-
-                <button
-                  onClick={async () => {
-                    if (!otp) {
-                      toast.error(t("otp.enterOtpError"));
-                      return;
-                    }
-
-                    try {
-                      const response = await fetch(`${BACKEND_URL}/api/otp/verify`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email, otp }),
-                      });
-
-                      const data = await response.json();
-
-                      if (data.success) {
-                        await i18n.changeLanguage(selectedLanguage);
-
-                        setShowOtpModal(false);
-                        setOtpSent(false);
-                        setEmail("");
-                        setOtp("");
-
-                        toast.success(t("otp.changed"));
-                      } else {
-                        toast.error(data.message || "Invalid OTP");
-                      }
-                    } catch (error) {
-                      console.error(error);
-                      toast.error("Unable to verify OTP");
-                    }
-                  }}
-                  className="w-full bg-green-600 text-white rounded-lg py-2 font-medium hover:bg-green-700 transition-colors"
-                >
-                  {t("otp.verify")}
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() => {
-                setShowOtpModal(false);
-                setOtpSent(false);
-                setEmail("");
-                setOtp("");
-              }}
-              className="w-full mt-2 text-gray-600 py-2 hover:bg-gray-100 rounded-lg transition-colors text-sm"
-            >
-              {t("otp.cancel")}
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 };

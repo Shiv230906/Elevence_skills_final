@@ -34,7 +34,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/router";
 import ResumePreview, { TemplateType } from "@/components/ResumePreview";
-import OtpVerificationModal from "@/components/OtpVerificationModal";
 
 interface EducationItem {
   institution: string;
@@ -82,9 +81,7 @@ const ResumeBuilder: React.FC = () => {
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("edit");
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("Modern");
 
-  // OTP Verification, Payment & PDF Generation State
-  const [showOtpModal, setShowOtpModal] = useState<boolean>(false);
-  const [isVerified, setIsVerified] = useState<boolean>(false);
+  // Payment & PDF Generation State
   const [paymentCompleted, setPaymentCompleted] = useState<boolean>(false);
   const [activePaymentId, setActivePaymentId] = useState<string>("");
   const [processingPayment, setProcessingPayment] = useState<boolean>(false);
@@ -211,7 +208,6 @@ const ResumeBuilder: React.FC = () => {
 
           // Each PDF generation requires its own ₹50 payment — reset here
           setPaymentCompleted(false);
-          setIsVerified(true);
 
           if (data.resumeUrl) {
             setResumeUrl(data.resumeUrl);
@@ -392,12 +388,6 @@ const ResumeBuilder: React.FC = () => {
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     await saveResumeDraft();
-  };
-
-  const handleOtpSuccess = () => {
-    setIsVerified(true);
-    setShowOtpModal(false);
-    toast.success("Identity verified successfully!");
   };
 
   // Handle "Generate & Download PDF - ₹50" Button Click
@@ -1402,12 +1392,12 @@ const ResumeBuilder: React.FC = () => {
                       </>
                     )}
                   </button>
-                ) : isVerified ? (
+                ) : (
                   <button
                     type="button"
-                    onClick={handleInitiatePayment}
+                    onClick={handleGenerateClick}
                     disabled={processingPayment}
-                    className="inline-flex items-center px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-all duration-200 disabled:opacity-50 text-base"
+                    className="inline-flex items-center px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all duration-200 text-base disabled:opacity-50"
                   >
                     {processingPayment ? (
                       <>
@@ -1416,19 +1406,10 @@ const ResumeBuilder: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <CreditCard className="-ml-1 mr-2 h-5 w-5" />
-                        Pay ₹50 with Razorpay
+                        <Sparkles className="-ml-1 mr-2 h-5 w-5" />
+                        Generate PDF - ₹50
                       </>
                     )}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleGenerateClick}
-                    className="inline-flex items-center px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all duration-200 text-base"
-                  >
-                    <Sparkles className="-ml-1 mr-2 h-5 w-5" />
-                    Generate PDF - ₹50
                   </button>
                 )}
               </div>
@@ -1448,13 +1429,6 @@ const ResumeBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* OTP Verification Modal */}
-      <OtpVerificationModal
-        isOpen={showOtpModal}
-        email={personalInfo.email}
-        onClose={() => setShowOtpModal(false)}
-        onSuccess={handleOtpSuccess}
-      />
     </div>
   );
 };

@@ -25,7 +25,7 @@ export default function LoginPage() {
 
   const isLoggingInRef = useRef(false);
 
-  // Clear any stale pending sessions on entering the login page
+  // Clear any stale session data on entering the login page
   useEffect(() => {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("pending_otp_login");
@@ -100,38 +100,9 @@ export default function LoginPage() {
         return;
       }
 
-      // ── CASE 3: Chrome browser — OTP required ─────────────────────────────
-      if (data.requiresOtp) {
+      // ── CASE 3: Credentials valid — log in immediately ──────────────────────────────
+      if (data.allowed || data.firebaseUid) {
         if (typeof window !== "undefined") {
-          sessionStorage.setItem("auth_provider", "credentials");
-          sessionStorage.removeItem(`otp_verified_${data.firebaseUid}`);
-          const pendingData: PendingUser = {
-            uid: data.firebaseUid,
-            email: data.email,
-            name: data.name || "User",
-            photo: "",
-            historyId: data.historyId || null,
-            loginType: "credentials",
-            identifier: cleanIdentifier,
-          };
-          sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
-        }
-
-        // Ensure user is NOT in Redux yet (OTP required)
-        dispatch(logout());
-
-        toast.info(data.message || "For security, Chrome login requires email OTP verification. OTP sent to your registered email.");
-        router.push("/verify-otp");
-        return;
-      }
-
-      // ── CASE 4: Non-Chrome browser — immediate access granted ─────────────
-      if (data.allowed) {
-        if (typeof window !== "undefined") {
-          // Mark as OTP-verified (non-Chrome skips OTP entirely)
-          localStorage.setItem(`otp_verified_${data.firebaseUid}`, "true");
-          sessionStorage.setItem(`otp_verified_${data.firebaseUid}`, "true");
-
           const credsString = JSON.stringify({
             uid: data.firebaseUid,
             name: data.name || "User",
@@ -140,8 +111,6 @@ export default function LoginPage() {
           });
           localStorage.setItem("credentials_user", credsString);
           sessionStorage.setItem("credentials_user", credsString);
-
-          // Clear any stale pending OTP state
           sessionStorage.removeItem("pending_otp_login");
           sessionStorage.removeItem("auth_provider");
         }
@@ -252,94 +221,32 @@ export default function LoginPage() {
       return;
     }
 
-    // Set pending OTP session
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("auth_provider", "google");
-      sessionStorage.removeItem(`otp_verified_${firebaseUser.uid}`);
-      const pendingData: PendingUser = {
+    // Sync user profile to database
+    fetch(`${BACKEND_URL}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        firebaseUid: firebaseUser.uid,
+        fullName: firebaseUser.displayName || "User",
+        email: firebaseUser.email,
+        profilePhoto: firebaseUser.photoURL || "",
+      }),
+    }).catch((err) => console.warn("Google user DB sync note:", err));
+
+    // Log in immediately — no OTP required
+    dispatch(
+      login({
         uid: firebaseUser.uid,
-        email: firebaseUser.email || "",
         name: firebaseUser.displayName || "User",
+        email: firebaseUser.email || "",
         photo: firebaseUser.photoURL || "",
-        historyId: null,
-        loginType: "google",
-      };
-      sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
-    }
+      })
+    );
 
-    // Check backend security rules and trigger OTP
-    try {
-      const checkRes = await fetch(`${BACKEND_URL}/api/auth/login-check`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firebaseUid: firebaseUser.uid,
-          userEmail: firebaseUser.email,
-          loginType: "google",
-          isGoogleLogin: true,
-        }),
-      });
-
-      let checkData: any = {};
-      const ct = checkRes.headers.get("content-type");
-      if (ct && ct.includes("application/json")) {
-        try {
-          checkData = await checkRes.json();
-        } catch (_) {}
-      }
-
-      if (checkData.blocked && checkData.reason === "mobile_time_restriction") {
-        toast.error(
-          checkData.message || "Mobile login is restricted outside 10:00 AM - 1:00 PM IST."
-        );
-        await signOut(auth);
-        if (typeof window !== "undefined") {
-          sessionStorage.removeItem("pending_otp_login");
-          sessionStorage.removeItem("credentials_user");
-          sessionStorage.removeItem("auth_provider");
-        }
-        isLoggingInRef.current = false;
-        setIsGoogleLoading(false);
-        return;
-      }
-
-      // Sync user profile to database if not yet existing
-      fetch(`${BACKEND_URL}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firebaseUid: firebaseUser.uid,
-          fullName: firebaseUser.displayName || "User",
-          email: firebaseUser.email,
-          profilePhoto: firebaseUser.photoURL || "",
-        }),
-      }).catch((err) => console.warn("Google user DB sync note:", err));
-
-      if (typeof window !== "undefined") {
-        const pendingData: PendingUser = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email || "",
-          name: firebaseUser.displayName || "User",
-          photo: firebaseUser.photoURL || "",
-          historyId: checkData.historyId || null,
-          loginType: "google",
-        };
-        sessionStorage.setItem("pending_otp_login", JSON.stringify(pendingData));
-      }
-
-      // Ensure user is not considered logged in in Redux before OTP verification
-      dispatch(logout());
-
-      toast.info("Verification OTP sent to your registered email.");
-      isLoggingInRef.current = false;
-      setIsGoogleLoading(false);
-      router.push("/verify-otp");
-    } catch (backendErr) {
-      console.warn("Backend security check error:", backendErr);
-      isLoggingInRef.current = false;
-      setIsGoogleLoading(false);
-      router.push("/verify-otp");
-    }
+    toast.success("Logged in successfully with Google!");
+    isLoggingInRef.current = false;
+    setIsGoogleLoading(false);
+    router.replace("/");
   };
 
   return (
